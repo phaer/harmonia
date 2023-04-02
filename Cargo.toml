@@ -4,3 +4,7 @@ members = [
     "harmonia",
     "libnixstore"
 ]
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
