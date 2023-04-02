@@ -110,7 +110,7 @@ async fn dump_contents(
     let mut left = expected_size;
 
     loop {
-        let mut buf = vec![0; 4096];
+        let mut buf = vec![0; 16384];
 
         let n = file.read(&mut buf).await.with_context(|| {
             format!(
