@@ -179,7 +179,8 @@ struct Frame {
 
 impl Frame {
     async fn new(path: PathBuf) -> Result<Self> {
-        let metadata = fs::symlink_metadata(&path)
+        let metadata = tokio::fs::symlink_metadata(&path)
+            .await
             .with_context(|| format!("Failed to get metadata for path: {}", path.display()))?;
         let children = if metadata.is_dir() {
             let mut read_dir = tokio::fs::read_dir(&path).await.with_context(|| {
