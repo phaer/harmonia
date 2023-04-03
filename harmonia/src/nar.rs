@@ -110,7 +110,7 @@ async fn dump_contents(
     let mut left = expected_size;
 
     loop {
-        let mut buf = vec![0; 4096];
+        let mut buf = vec![0; 16384];
 
         let n = file.read(&mut buf).await.with_context(|| {
             format!(
@@ -179,7 +179,8 @@ struct Frame {
 
 impl Frame {
     async fn new(path: PathBuf) -> Result<Self> {
-        let metadata = fs::symlink_metadata(&path)
+        let metadata = tokio::fs::symlink_metadata(&path)
+            .await
             .with_context(|| format!("Failed to get metadata for path: {}", path.display()))?;
         let children = if metadata.is_dir() {
             let mut read_dir = tokio::fs::read_dir(&path).await.with_context(|| {
@@ -256,53 +257,52 @@ async fn dump_symlink(frame: &Frame, tx: &Sender<Result<Bytes, ThreadSafeError>>
     Ok(())
 }
 
-async fn dump_dir(
-    mut frame: Frame,
-    stack: &mut Vec<Frame>,
-    tx: &Sender<Result<Bytes, ThreadSafeError>>,
-) -> Result<()> {
-    if frame.first_child {
-        write_byte_slices(tx, &[b"(", b"type", b"directory"]).await?;
-        if frame.children.is_none() {
-            // end directory
-            write_byte_slices(tx, &[b")"]).await?;
-        }
-    }
-
-    if let Some(childrens) = frame.children.as_mut() {
-        if frame.first_child {
-            frame.first_child = false;
-        } else {
-            // end entry
-            write_byte_slices(tx, &[b")"]).await?;
-        }
-        if let Some((nar_name, name)) = childrens.pop_first() {
-            write_byte_slices(tx, &[b"entry", b"(", b"name", nar_name.as_bytes(), b"node"]).await?;
-            let path = frame.path.join(name);
-            stack.push(frame);
-            stack.push(Frame::new(path).await?);
-        } else {
-            // end directory
-            write_byte_slices(tx, &[b")"]).await?;
-        }
-    }
-    Ok(())
-}
-
 async fn dump_path(path: &Path, tx: &Sender<Result<Bytes, ThreadSafeError>>) -> Result<()> {
     write_byte_slices(tx, &[b"nix-archive-1"]).await?;
     let mut stack = vec![Frame::new(path.to_owned()).await?];
 
-    while let Some(frame) = stack.pop() {
+    while let Some(frame) = stack.last_mut() {
         let file_type = frame.metadata.file_type();
         if file_type.is_dir() {
-            dump_dir(frame, &mut stack, tx).await?;
-        } else if file_type.is_file() {
-            dump_file(&frame, tx).await?;
-        } else if file_type.is_symlink() {
-            dump_symlink(&frame, tx).await?;
+            if frame.first_child {
+                write_byte_slices(tx, &[b"(", b"type", b"directory"]).await?;
+                if frame.children.is_none() {
+                    // end directory
+                    write_byte_slices(tx, &[b")"]).await?;
+                    // pop directory from stack
+                    stack.pop();
+                    continue;
+                }
+            }
+
+            if let Some(childrens) = frame.children.as_mut() {
+                if frame.first_child {
+                    frame.first_child = false;
+                } else {
+                    // end entry
+                    write_byte_slices(tx, &[b")"]).await?;
+                }
+                if let Some((nar_name, name)) = childrens.pop_first() {
+                    write_byte_slices(tx, &[b"entry", b"(", b"name", nar_name.as_bytes(), b"node"])
+                        .await?;
+                    let path = frame.path.join(name);
+                    stack.push(Frame::new(path).await?);
+                } else {
+                    // end directory
+                    write_byte_slices(tx, &[b")"]).await?;
+                    // pop directory from stack
+                    stack.pop();
+                }
+            }
         } else {
-            bail!("Unsupported file type: {:?}", file_type);
+            if file_type.is_file() {
+                dump_file(frame, tx).await?;
+            } else if file_type.is_symlink() {
+                dump_symlink(frame, tx).await?;
+            } else {
+                bail!("Unsupported file type: {:?}", file_type);
+            }
+            stack.pop();
         }
     }
 
