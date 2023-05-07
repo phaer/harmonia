@@ -8,6 +8,7 @@
       nix copy \
         --option trusted-public-keys "$PUBKEY" \
         --from http://harmonia:5000 \
+        --extra-experimental-features nix-command \
         --to /root/test-store \
         "$@"
     '';
@@ -16,26 +17,21 @@
     name = "t01-signing";
 
     nodes = {
-      harmonia = { ... }:
-        {
-          imports = [ ../module.nix ];
+      harmonia = { ... }: {
+        imports = [ ../module.nix ];
 
-          services.harmonia = {
-            enable = true;
-            signKeyPath = "${./cache.sk}";
-          };
-
-          networking.firewall.allowedTCPPorts = [ 5000 ];
-          environment.systemPackages = [ hello ];
+        services.harmonia = {
+          enable = true;
+          signKeyPath = "${./cache.sk}";
         };
 
-      client01 = { lib, ... }:
-        {
-          nix.settings.substituters = lib.mkForce [ "http://harmonia:5000" ];
-          nix.extraOptions = ''
-            experimental-features = nix-command
-          '';
-        };
+        networking.firewall.allowedTCPPorts = [ 5000 ];
+        system.extraDependencies = [ hello ];
+      };
+
+      client01 = { lib, ... }: {
+        nix.settings.substituters = lib.mkForce [ "http://harmonia:5000" ];
+      };
     };
 
     testScript = ''
