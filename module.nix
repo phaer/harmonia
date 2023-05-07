@@ -12,6 +12,12 @@ in
     services.harmonia = {
       enable = lib.mkEnableOption "Harmonia: Nix binary cache written in Rust";
 
+      signKeyPath = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Path to the signing key to use for signing the cache";
+      };
+
       settings = lib.mkOption {
         type = lib.types.submodule {
           freeformType = format.type;
@@ -44,6 +50,7 @@ in
         NIX_REMOTE = "daemon";
         LIBEV_FLAGS = "4"; # go ahead and mandate epoll(2)
         CONFIG_FILE = lib.mkIf (configFile != null) configFile;
+        SIGN_KEY_PATH = lib.mkIf (cfg.signKeyPath != null) "%d/sign-key";
         RUST_LOG = "info";
       };
 
@@ -59,6 +66,7 @@ in
         Group = "harmonia";
 
         RuntimeDirectory = "harmonia";
+        LoadCredential = lib.optional (cfg.signKeyPath != null) "sign-key:${cfg.signKeyPath}";
 
         SystemCallFilter = "@system-service";
 

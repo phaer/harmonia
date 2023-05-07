@@ -22,9 +22,7 @@
 
           services.harmonia = {
             enable = true;
-            settings = {
-              sign_key_path = "${./cache.sk}";
-            };
+            signKeyPath = "${./cache.sk}";
           };
 
           networking.firewall.allowedTCPPorts = [ 5000 ];
