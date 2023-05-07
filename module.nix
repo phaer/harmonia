@@ -65,6 +65,9 @@ in
         User = "harmonia";
         Group = "harmonia";
         DynamicUser = true;
+        PrivateUsers = true;
+        DeviceAllow = [""];
+        UMask = "0066";
 
         RuntimeDirectory = "harmonia";
         LoadCredential = lib.optional (cfg.signKeyPath != null) "sign-key:${cfg.signKeyPath}";
@@ -74,15 +77,28 @@ in
           "~@privileged"
           "~@resources"
         ];
+        CapabilityBoundingSet = "";
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectControlGroups = true;
+        ProtectKernelLogs = true;
+        ProtectHostname = true;
+        ProtectClock = true;
+        RestrictRealtime = true;
+        MemoryDenyWriteExecute = true;
+        ProcSubset = "pid";
+        ProtectProc = "invisible";
+        RestrictNamespaces = true;
+        SystemCallArchitectures = "native";
 
         PrivateNetwork = false;
         PrivateTmp = true;
         PrivateDevices = true;
         PrivateMounts = true;
-        ProtectProc = true;
         NoNewPrivileges = true;
         ProtectSystem = "strict";
         ProtectHome = true;
+        LockPersonality = true;
         RestrictAddressFamilies = "AF_UNIX AF_INET AF_INET6";
 
         LimitNOFILE = 65536;
