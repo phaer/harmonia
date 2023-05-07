@@ -64,24 +64,29 @@ in
 
         User = "harmonia";
         Group = "harmonia";
+        DynamicUser = true;
 
         RuntimeDirectory = "harmonia";
         LoadCredential = lib.optional (cfg.signKeyPath != null) "sign-key:${cfg.signKeyPath}";
 
-        SystemCallFilter = "@system-service";
+        SystemCallFilter = [
+          "@system-service"
+          "~@privileged"
+          "~@resources"
+        ];
 
         PrivateNetwork = false;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        PrivateMounts = true;
+        ProtectProc = true;
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        RestrictAddressFamilies = "AF_UNIX AF_INET AF_INET6";
 
         LimitNOFILE = 65536;
       };
-    };
-
-    users = {
-      users.harmonia = {
-        isSystemUser = true;
-        group = "harmonia";
-      };
-      groups.harmonia = { };
     };
   };
 }
