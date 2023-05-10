@@ -36,7 +36,7 @@ should be passed as env var `CONFIG_FILE`. If no config file is passed the
 following default values will be used:
 
 ```toml
-bind = "127.0.0.1:8080"
+bind = "[::]:5000"
 workers = 4
 max_connection_rate = 256
 priority = 30
