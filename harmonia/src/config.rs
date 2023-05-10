@@ -5,7 +5,7 @@ use base64::{engine::general_purpose, Engine};
 use serde::Deserialize;
 
 fn default_bind() -> String {
-    "127.0.0.1:8080".into()
+    "[::]:5000".into()
 }
 
 fn default_workers() -> usize {
