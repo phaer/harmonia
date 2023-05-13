@@ -37,7 +37,7 @@ following default values will be used:
 
 ```toml
 # default ip:hostname to bind to
-bind = "127.0.0.1:8080"
+bind = "[::]:5000"
 # Sets number of workers to start in the webserver
 workers = 4
 # Sets the per-worker maximum number of concurrent connections.

@@ -14,7 +14,7 @@ mod ffi {
         drv: String,
         narhash: String,
         time: i64,
-        size: usize,
+        size: u64,
         refs: Vec<String>,
         sigs: Vec<String>,
         ca: String,
@@ -78,11 +78,6 @@ mod ffi {
         // additional but useful for harmonia
         fn get_build_log(derivation_path: &str) -> Result<String>;
         fn get_nar_list(store_path: &str) -> Result<String>;
-        fn dump_path(
-            store_part: &str,
-            callback: unsafe extern "C" fn(data: &[u8], user_data: usize) -> bool,
-            user_data: usize,
-        );
     }
 }
 
@@ -105,7 +100,7 @@ pub struct PathInfo {
     pub time: i64,
     /// The size of the nar archive which would be produced by applying `nix-store --dump` to this
     /// path.
-    pub size: usize,
+    pub size: u64,
     /// The store paths referenced by this path.
     pub refs: Vec<String>,
     /// The signatures on this store path; "note: not necessarily verified".
@@ -391,25 +386,4 @@ pub fn get_build_log(derivation_path: &str) -> Option<String> {
 /// Return a JSON representation as String of the contents of a NAR (except file contents).
 pub fn get_nar_list(store_path: &str) -> Result<String, cxx::Exception> {
     ffi::get_nar_list(store_path)
-}
-
-fn dump_path_trampoline<F>(data: &[u8], userdata: usize) -> bool
-where
-    F: FnMut(&[u8]) -> bool,
-{
-    let closure = unsafe { &mut *(userdata as *mut std::ffi::c_void).cast::<F>() };
-    closure(data)
-}
-
-#[inline]
-/// Dump a store path in NAR format. The data is passed in chunks to callback
-pub fn dump_path<F>(store_path: &str, callback: F)
-where
-    F: FnMut(&[u8]) -> bool,
-{
-    ffi::dump_path(
-        store_path,
-        dump_path_trampoline::<F>,
-        std::ptr::addr_of!(callback).cast::<std::ffi::c_void>() as usize,
-    );
 }

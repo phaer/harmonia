@@ -1,6 +1,6 @@
 [package]
 name = "harmonia"
-version = "0.5.0"
+version = "0.6.4"
 authors = ["Simon Hauser <simon.hauser@helsinki-systems.de>"]
 edition = "2021"
 license = "MIT"
@@ -24,7 +24,7 @@ tokio-stream = { version = "0.1" }
 http-range = "0.1"
 askama_escape = "0.10.3"
 percent-encoding = "2.2.0"
-anyhow = "1.0.70"
+anyhow = "1.0.71"
 tempfile = "3.5.0"
 
 

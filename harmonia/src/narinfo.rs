@@ -18,7 +18,7 @@ struct NarInfo {
     url: String,
     compression: String,
     nar_hash: String,
-    nar_size: usize,
+    nar_size: u64,
     references: Vec<String>,
     deriver: Option<String>,
     system: Option<String>,
@@ -29,7 +29,7 @@ struct NarInfo {
 fn fingerprint_path(
     store_path: &str,
     nar_hash: &str,
-    nar_size: usize,
+    nar_size: u64,
     refs: &[String],
 ) -> Result<Option<String>, Box<dyn Error>> {
     let root_store_dir = libnixstore::get_store_dir();
