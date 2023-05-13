@@ -100,7 +100,7 @@ pub struct PathInfo {
     pub time: i64,
     /// The size of the nar archive which would be produced by applying `nix-store --dump` to this
     /// path.
-    pub size: usize,
+    pub size: u64,
     /// The store paths referenced by this path.
     pub refs: Vec<String>,
     /// The signatures on this store path; "note: not necessarily verified".

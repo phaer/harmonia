@@ -30,8 +30,8 @@ pub struct NarRequest {
 // Credit actix_web actix-files: https://github.com/actix/actix-web/blob/master/actix-files/src/range.rs
 #[derive(Debug)]
 struct HttpRange {
-    start: usize,
-    length: usize,
+    start: u64,
+    length: u64,
 }
 
 impl HttpRange {
@@ -41,14 +41,14 @@ impl HttpRange {
     /// `size` is full size of response (file).
     fn parse(
         header: &str,
-        size: usize,
+        size: u64,
     ) -> std::result::Result<Vec<Self>, http_range::HttpRangeParseError> {
-        http_range::HttpRange::parse(header, size as u64).map(|ranges| {
+        http_range::HttpRange::parse(header, size).map(|ranges| {
             ranges
                 .iter()
                 .map(|range| Self {
-                    start: range.start as usize,
-                    length: range.length as usize,
+                    start: range.start,
+                    length: range.length,
                 })
                 .collect()
         })
@@ -348,7 +348,7 @@ pub(crate) async fn get(
         } else {
             return Ok(res.status(http::StatusCode::BAD_REQUEST).finish());
         };
-        let mut send = 0;
+        let mut send: u64 = 0;
 
         let (tx2, mut rx2) = tokio::sync::mpsc::channel::<Result<Bytes, ThreadSafeError>>(1000);
         task::spawn(async move {
@@ -360,13 +360,28 @@ pub(crate) async fn get(
         // we keep this closure extra to avoid unaligned copies in the non-range request case.
         task::spawn(async move {
             while let Some(Ok(data)) = rx2.recv().await {
-                let len = data.len();
+                let len = data.len() as u64;
                 if send + len > offset {
                     let start = if send < offset { offset - send } else { 0 };
-                    let end = if send + data.len() > offset + rlength {
+                    let end = if send + data.len() as u64 > offset + rlength {
                         start + rlength
                     } else {
                         len
+                    };
+                    // does it fit into usize
+                    let start: usize = match start.try_into() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::error!("BUG: start(u64) is too big for usize: {:?}", e);
+                            break;
+                        }
+                    };
+                    let end: usize = match end.try_into() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::error!("BUG: end(u64) is too big for usize: {:?}", e);
+                            break;
+                        }
                     };
                     if tx.send(Ok(data.slice(start..end))).await.is_err() {
                         break;
@@ -388,7 +403,7 @@ pub(crate) async fn get(
         .insert_header((http::header::CONTENT_TYPE, "application/x-nix-archive"))
         .insert_header((http::header::ACCEPT_RANGES, "bytes"))
         .insert_header(cache_control_max_age_1y())
-        .body(actix_web::body::SizedStream::new(rlength as u64, rx)))
+        .body(actix_web::body::SizedStream::new(rlength, rx)))
 }
 
 #[cfg(test)]
