@@ -14,7 +14,7 @@ mod ffi {
         drv: String,
         narhash: String,
         time: i64,
-        size: usize,
+        size: u64,
         refs: Vec<String>,
         sigs: Vec<String>,
         ca: String,
