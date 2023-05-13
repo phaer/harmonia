@@ -8,12 +8,12 @@ in
 {
   options = {
     services.harmonia = {
-      enable = lib.mkEnableOption "Harmonia: Nix binary cache written in Rust";
+      enable = lib.mkEnableOption (lib.mdDoc "Harmonia: Nix binary cache written in Rust");
 
       signKeyPath = lib.mkOption {
         type = lib.types.nullOr lib.types.path;
         default = null;
-        description = "Path to the signing key to use for signing the cache";
+        description = lib.mdDoc "Path to the signing key to use for signing the cache";
       };
 
       settings = lib.mkOption {
@@ -21,7 +21,7 @@ in
           freeformType = format.type;
         };
 
-        description = "Settings to merge with the default configuration";
+        description = lib.mdDoc "Settings to merge with the default configuration";
       };
     };
   };
