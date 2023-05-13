@@ -363,25 +363,4 @@ public:
     return "Stop dumping nar";
   }
 };
-
-void dump_path(
-    rust::Str store_path,
-    rust::Fn<bool(rust::Slice<const uint8_t>, long unsigned int)> callback,
-    size_t user_data) {
-  nix::LambdaSink sink([=](std::string_view v) {
-    auto data = rust::Slice<const uint8_t>((const uint8_t *)v.data(), v.size());
-    bool ret = (*callback)(data, user_data);
-    if (!ret) {
-      throw StopDump();
-    }
-  });
-
-  try {
-    auto store = get_store();
-    store->narFromPath(store->parseStorePath(STRING_VIEW(store_path)), sink);
-  } catch (StopDump &e) {
-    // Intentionally do nothing. We're only using the exception as a
-    // short-circuiting mechanism.
-  }
-}
 } // namespace libnixstore
