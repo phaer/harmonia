@@ -16,7 +16,7 @@
         {
           imports = [ ../module.nix ];
 
-          services.harmonia.enable = true;
+          services.harmonia-dev.enable = true;
 
           networking.firewall.allowedTCPPorts = [ 5000 ];
           system.extraDependencies = [
