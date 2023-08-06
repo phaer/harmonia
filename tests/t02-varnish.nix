@@ -7,7 +7,7 @@
         {
           imports = [ ../module.nix ];
 
-          services.harmonia.enable = true;
+          services.harmonia-dev.enable = true;
 
           services.varnish = {
             enable = true;

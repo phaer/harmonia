@@ -1,13 +1,13 @@
 { config, pkgs, lib, ... }:
 let
-  cfg = config.services.harmonia;
+  cfg = config.services.harmonia-dev;
 
   format = pkgs.formats.toml { };
   configFile = format.generate "harmonia.toml" cfg.settings;
 in
 {
   options = {
-    services.harmonia = {
+    services.harmonia-dev = {
       enable = lib.mkEnableOption (lib.mdDoc "Harmonia: Nix binary cache written in Rust");
 
       signKeyPath = lib.mkOption {
@@ -27,21 +27,20 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    services.harmonia.settings = builtins.mapAttrs (_: v: lib.mkDefault v) {
+    services.harmonia-dev.settings = builtins.mapAttrs (_: v: lib.mkDefault v) {
       bind = "[::]:5000";
       workers = 4;
       max_connection_rate = 256;
       priority = 50;
     };
 
-    systemd.services.harmonia = {
+    systemd.services.harmonia-dev = {
       description = "harmonia binary cache service";
 
       requires = [ "nix-daemon.socket" ];
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
 
-      path = [ config.nix.package.out ];
       environment = {
         NIX_REMOTE = "daemon";
         LIBEV_FLAGS = "4"; # go ahead and mandate epoll(2)
@@ -56,7 +55,7 @@ in
       environment.HOME = "/run/harmonia";
 
       serviceConfig = {
-        ExecStart = "${import ./. { inherit pkgs; }}/bin/harmonia";
+        ExecStart = "${pkgs.callPackage ./. { }}/bin/harmonia";
 
         User = "harmonia";
         Group = "harmonia";
