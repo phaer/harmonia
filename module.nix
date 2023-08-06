@@ -56,7 +56,7 @@ in
       environment.HOME = "/run/harmonia";
 
       serviceConfig = {
-        ExecStart = "${import ./. { inherit pkgs; }}/bin/harmonia";
+        ExecStart = "${pkgs.callPackage ./. { }}/bin/harmonia";
 
         User = "harmonia";
         Group = "harmonia";

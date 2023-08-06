@@ -1,14 +1,24 @@
 { pkgs ? (import <nixpkgs> { })
+, rustPlatform ? pkgs.rustPlatform
+, nix ? pkgs.nix
+, nix-gitignore ? pkgs.nix-gitignore
+, lib ? pkgs.lib
+, clippy ? pkgs.clippy
+, pkg-config ? pkgs.pkg-config
+, nixVersions ? pkgs.nixVersions
+, nlohmann_json ? pkgs.nlohmann_json
+, libsodium ? pkgs.libsodium
+, boost ? pkgs.boost
+, openssl ? pkgs.openssl
 , enableClippy ? false
 }:
-with pkgs;
 
 rustPlatform.buildRustPackage ({
   name = "harmonia";
   src = nix-gitignore.gitignoreSource [ ] (lib.sources.sourceFilesBySuffices (lib.cleanSource ./.) [ ".rs" ".toml" ".lock" ".cpp" ".h" ".md" ]);
   cargoLock.lockFile = ./Cargo.lock;
 
-  nativeBuildInputs = [ pkg-config ] ++ lib.optionals enableClippy [ pkgs.clippy ];
+  nativeBuildInputs = [ pkg-config ] ++ lib.optionals enableClippy [ clippy ];
   buildInputs = [
     (if lib.versionAtLeast nix.version nixVersions.nix_2_12.version then nix else nixVersions.nix_2_12)
     nlohmann_json
