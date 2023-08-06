@@ -41,7 +41,6 @@ in
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
 
-      path = [ config.nix.package.out ];
       environment = {
         NIX_REMOTE = "daemon";
         LIBEV_FLAGS = "4"; # go ahead and mandate epoll(2)
