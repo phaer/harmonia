@@ -3,7 +3,11 @@ builds:
   - checks.aarch64-darwin.clippy
   - checks.aarch64-linux.clippy
   - checks.aarch64-darwin.treefmt
-  - checks.aarch64-linux.treefm
+  - checks.aarch64-linux.treefmt
+  # garnix doesn't have kvm support. So this is super slow.
+  - checks.aarch64-linux.t00-simple
+  - checks.aarch64-linux.t01-signing
+  - checks.aarch64-linux.t02-varnish
   include:
   - '*.x86_64-linux.*'
   - '*.aarch64-linux.*'

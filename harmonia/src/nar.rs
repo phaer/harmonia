@@ -157,9 +157,13 @@ async fn dump_contents(
 
 #[cfg(target_os = "macos")]
 fn strip_case_hack_suffix(s: &OsStr) -> &OsStr {
-    let pos = s.find("~nix~case~hack~");
+    let needle = b"~nix~case~hack~";
+    let pos = s
+        .as_bytes()
+        .windows(needle.len())
+        .position(|window| window == needle);
     if let Some(pos) = pos {
-        &s[0..pos]
+        OsStr::from_bytes(&s.as_bytes()[0..pos])
     } else {
         s
     }
