@@ -32,7 +32,7 @@ sed -i -e "s!^version = \".*\"\$!version = \"${version}\"!" harmonia/Cargo.toml
 cargo build
 git add Cargo.lock harmonia/Cargo.toml
 nix flake check -vL
-git commit -m "bump version ${version}"
-git tag -e "${version}"
+git commit -m "bump version harmonia-v${version}"
+git tag -e "harmonia-v${version}"
 
 echo "now run 'git push --tags origin master'"
