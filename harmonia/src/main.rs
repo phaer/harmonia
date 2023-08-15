@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
 use actix_web::{http, web, App, HttpResponse, HttpServer};
 
@@ -122,6 +122,8 @@ async fn main() -> std::io::Result<()> {
             .route("/health", web::get().to(health::get))
             .route("/nix-cache-info", web::get().to(cacheinfo::get))
     })
+    // default is 5 seconds, which is too small when doing mass requests on slow machines
+    .client_request_timeout(Duration::from_secs(30))
     .workers(c.workers)
     .max_connection_rate(c.max_connection_rate)
     .bind(c.bind.clone())?
