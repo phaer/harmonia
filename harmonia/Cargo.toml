@@ -4,8 +4,8 @@ version = "0.7.1"
 authors = ["Simon Hauser <simon.hauser@helsinki-systems.de>"]
 edition = "2021"
 license = "MIT"
-homepage = "https://github.com/helsinki-systems/harmonia"
-repository = "https://github.com/helsinki-systems/harmonia.git"
+homepage = "https://github.com/nix-community/harmonia"
+repository = "https://github.com/nix-community/harmonia.git"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
