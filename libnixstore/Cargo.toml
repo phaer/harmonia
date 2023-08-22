@@ -4,8 +4,8 @@ version = "0.4.0"
 authors = ["Simon Hauser <simon.hauser@helsinki-systems.de>"]
 description = "Rust friendly bindings to nixos nix-store library"
 edition = "2021"
-homepage = "https://github.com/helsinki-systems/harmonia"
-repository = "https://github.com/helsinki-systems/harmonia.git"
+homepage = "https://github.com/nix-community/harmonia"
+repository = "https://github.com/nix-community/harmonia.git"
 license = "MIT"
 
 [dependencies]
