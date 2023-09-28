@@ -1,6 +1,8 @@
 #![warn(clippy::dbg_macro)]
 
+use std::path::Path;
 use std::{fmt::Display, time::Duration};
+use url::Url;
 
 use actix_web::{http, web, App, HttpResponse, HttpServer};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
@@ -145,13 +147,43 @@ async fn main() -> std::io::Result<()> {
     .client_request_timeout(Duration::from_secs(30))
     .workers(c.workers)
     .max_connection_rate(c.max_connection_rate);
+
+    let try_url = Url::parse(&c.bind);
+    let (bind, uds) = {
+        if try_url.is_ok() {
+            let url = try_url.as_ref().unwrap();
+            if url.scheme() != "unix" {
+                (c.bind.as_str(), false)
+            } else if url.host().is_none() {
+                (url.path(), true)
+            } else {
+                log::error!("Can only bind to file URLs without host portion.");
+                std::process::exit(1)
+            }
+        } else {
+            (c.bind.as_str(), false)
+        }
+    };
+
     if c.tls_cert_path.is_some() || c.tls_key_path.is_some() {
+        if uds {
+            log::error!("TLS is not supported with Unix domain sockets.");
+            std::process::exit(1);
+        }
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         builder.set_private_key_file(c.tls_key_path.clone().unwrap(), SslFiletype::PEM)?;
         builder.set_certificate_chain_file(c.tls_cert_path.clone().unwrap())?;
         server = server.bind_openssl(c.bind.clone(), builder)?;
+    } else if uds {
+        if !cfg!(unix) {
+            log::error!("Binding to Unix domain sockets is only supported on Unix.");
+            std::process::exit(1);
+        } else {
+            server = server.bind_uds(Path::new(bind))?
+        }
     } else {
         server = server.bind(c.bind.clone())?;
     }
+
     server.run().await
 }

@@ -54,7 +54,6 @@
 
             programs.rustfmt.enable = true;
             programs.nixfmt.enable = true;
-            programs.nixfmt.package = pkgs.nixfmt-rfc-style;
             programs.deadnix.enable = true;
             programs.clang-format.enable = true;
           };
