@@ -42,8 +42,6 @@ stdenv.mkDerivation {
 ## Example
 
 ```rust
-fn main() {
-    libnixstore::init();
-    println!("{}", libnixstore::get_store_dir());
-}
+libnixstore::init();
+println!("{}", libnixstore::get_store_dir());
 ```
