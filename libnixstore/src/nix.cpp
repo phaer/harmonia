@@ -29,9 +29,8 @@ template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 static nix::ref<nix::Store> get_store() {
   static std::shared_ptr<nix::Store> _store;
   if (!_store) {
-    nix::initLibStore();
+    nix::initLibStore(true);
 
-    nix::loadConfFile();
     nix::Store::Params params;
     // Disable caching since we run as a deamon and non-reproduceable builds
     // might have a different result for hashes
