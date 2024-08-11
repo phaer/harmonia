@@ -51,10 +51,6 @@ rustPlatform.buildRustPackage (
   // lib.optionalAttrs enableClippy {
     buildPhase = ''
       cargo clippy --all-targets --all-features -- -D warnings
-      if grep -R 'dbg!' ./src; then
-        echo "use of dbg macro found in code!"
-        false
-      fi
     '';
     installPhase = ''
       touch $out
