@@ -1,3 +1,5 @@
+#![warn(clippy::dbg_macro)]
+
 use std::{fmt::Display, time::Duration};
 
 use actix_web::{http, web, App, HttpResponse, HttpServer};
