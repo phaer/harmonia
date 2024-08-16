@@ -2,10 +2,6 @@
   pkgs ?
     (builtins.getFlake (builtins.toString ./.)).inputs.nixpkgs.legacyPackages.${builtins.currentSystem},
   boost ? pkgs.boost,
-  cargo-audit ? pkgs.cargo-audit,
-  cargo-edit ? pkgs.cargo-edit,
-  cargo-outdated ? pkgs.cargo-outdated,
-  cargo-watch ? pkgs.cargo-watch,
   clippy ? pkgs.clippy,
   lib ? pkgs.lib,
   libiconv ? pkgs.libiconv,
@@ -32,10 +28,6 @@ pkgs.mkShell {
     boost
     rustfmt
     clippy
-    cargo-watch
-    cargo-edit
-    cargo-outdated
-    cargo-audit
     openssl
     rust-analyzer
   ] ++ lib.optional (stdenv.isDarwin) [ libiconv ];
