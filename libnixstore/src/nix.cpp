@@ -35,6 +35,10 @@ static nix::ref<nix::Store> get_store() {
     // Disable caching since we run as a deamon and non-reproduceable builds
     // might have a different result for hashes
     params["path-info-cache-size"] = "0";
+
+    // Disable substituting since we don't want to pull from other caches,
+    // this also avoids potential recursion
+    params["substitute"] = "false";
     _store = openStore(nix::settings.storeUri, params);
   }
   return nix::ref<nix::Store>(_store);
@@ -204,9 +208,15 @@ rust::String get_real_store_dir() {
 rust::String get_build_log(rust::Str derivation_path) {
   auto store = get_store();
   auto path = store->parseStorePath(STRING_VIEW(derivation_path));
-  auto subs = nix::getDefaultSubstituters();
+  auto subs = std::list<nix::ref<nix::Store>>{store};
+  // FIXME:
+  // This now introduces infinite recursion the binary cache is in the
+  // substituter list. We might need to make this a setting by having a list of
+  // substituters instead provided by the user.
 
-  subs.push_front(store);
+  // auto subs = nix::getDefaultSubstituters();
+  // subs.push_front(store);
+
   auto b = to_derived_path(path);
 
   for (auto &sub : subs) {
