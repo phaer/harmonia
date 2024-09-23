@@ -33,6 +33,6 @@ cargo build
 git add Cargo.lock harmonia/Cargo.toml
 nix flake check -vL
 git commit -m "bump version harmonia-v${version}"
-git tag -e "harmonia-v${version}"
+git tag "harmonia-v${version}"
 
 echo "now run 'git push --tags origin main'"
