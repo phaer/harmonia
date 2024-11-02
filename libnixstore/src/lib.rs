@@ -21,21 +21,6 @@ mod ffi {
         ca: String,
     }
 
-    struct InternalTuple {
-        lhs: String,
-        rhs: String,
-    }
-
-    struct InternalDrv {
-        outputs: Vec<InternalTuple>,
-        input_drvs: Vec<String>,
-        input_srcs: Vec<String>,
-        platform: String,
-        builder: String,
-        args: Vec<String>,
-        env: Vec<InternalTuple>,
-    }
-
     unsafe extern "C++" {
         include!("libnixstore/include/nix.h");
 
@@ -46,7 +31,6 @@ mod ffi {
         fn query_path_from_hash_part(hash_part: &str) -> Result<String>;
         fn convert_hash(algo: &str, s: &str, to_base_32: bool) -> Result<String>;
         fn sign_detached(secret_key: &[u8], msg: &str) -> Vec<u8>;
-        fn derivation_from_path(drv_path: &str) -> Result<InternalDrv>;
         fn get_store_dir() -> String;
         fn get_real_store_dir() -> String;
         fn get_build_log(derivation_path: &str) -> Result<String>;
@@ -179,31 +163,6 @@ pub fn convert_hash(algo: &str, s: &str, to_radix: Radix) -> Result<String, cxx:
 /// Return a detached signature of the given string.
 pub fn sign_detached(secret_key: &[u8], msg: &str) -> Vec<u8> {
     ffi::sign_detached(secret_key, msg)
-}
-
-#[inline]
-/// Read a derivation, after ensuring its existence through `ensurePath()`.
-pub fn derivation_from_path(drv_path: &str) -> Result<Drv, cxx::Exception> {
-    let res = ffi::derivation_from_path(drv_path)?;
-    let mut outputs = std::collections::HashMap::new();
-    for out in res.outputs {
-        outputs.insert(out.lhs, string_to_opt(out.rhs));
-    }
-
-    let mut env = std::collections::HashMap::new();
-    for v in res.env {
-        env.insert(v.lhs, v.rhs);
-    }
-
-    Ok(Drv {
-        outputs,
-        input_drvs: res.input_drvs,
-        input_srcs: res.input_srcs,
-        platform: res.platform,
-        builder: res.builder,
-        args: res.args,
-        env,
-    })
 }
 
 #[inline]
