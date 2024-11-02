@@ -143,45 +143,6 @@ sign_detached(rust::Slice<const unsigned char> secret_key, rust::Str msg) {
   return sig;
 }
 
-InternalDrv derivation_from_path(rust::Str drv_path) {
-  auto store = get_store();
-  nix::Derivation drv =
-      store->derivationFromPath(store->parseStorePath(STRING_VIEW(drv_path)));
-
-  auto oaop = drv.outputsAndOptPaths(*store);
-  rust::Vec<InternalTuple> outputs;
-  outputs.reserve(oaop.size());
-  for (auto &i : oaop) {
-    outputs.push_back(InternalTuple{
-        i.first,
-        i.second.second ? store->printStorePath(*i.second.second) : ""});
-  }
-
-  rust::Vec<rust::String> input_drvs;
-  input_drvs.reserve(drv.inputDrvs.map.size());
-  for (const auto &[inputDrv, inputNode] : drv.inputDrvs.map) {
-    input_drvs.push_back(store->printStorePath(inputDrv));
-  }
-
-  rust::Vec<rust::String> input_srcs = extract_path_set(drv.inputSrcs);
-
-  rust::Vec<rust::String> args;
-  args.reserve(drv.args.size());
-  for (const std::string &i : drv.args) {
-    args.push_back(i);
-  }
-
-  rust::Vec<InternalTuple> env;
-  env.reserve(drv.env.size());
-  for (auto &i : drv.env) {
-    env.push_back(InternalTuple{i.first, i.second});
-  }
-
-  return InternalDrv{
-      outputs, input_drvs, input_srcs, drv.platform, drv.builder, args, env,
-  };
-}
-
 rust::String get_store_dir() {
   return nix::settings.nixStore;
 }

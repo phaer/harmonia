@@ -66,14 +66,6 @@ fn query_narinfo(
             .collect::<Vec<String>>();
     }
 
-    if let Some(drv) = path_info.drv {
-        res.deriver = extract_filename(&drv);
-
-        if libnixstore::is_valid_path(&drv) {
-            res.system = Some(libnixstore::derivation_from_path(&drv)?.platform);
-        }
-    }
-
     let fingerprint = fingerprint_path(store_path, &res.nar_hash, res.nar_size, &refs)?;
     for sk in sign_keys {
         if let Some(ref fp) = fingerprint {
@@ -105,10 +97,6 @@ fn format_narinfo_txt(narinfo: &NarInfo) -> String {
 
     if let Some(drv) = &narinfo.deriver {
         res.push(format!("Deriver: {}", drv));
-    }
-
-    if let Some(sys) = &narinfo.system {
-        res.push(format!("System: {}", sys));
     }
 
     for sig in &narinfo.sigs {
