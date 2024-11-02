@@ -1,5 +1,10 @@
 #![warn(clippy::dbg_macro)]
 
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fmt::Display, time::Duration};
 use url::Url;
@@ -97,21 +102,11 @@ impl From<anyhow::Error> for ServerError {
 
 type ServerResult = Result<HttpResponse, ServerError>;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn inner_main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     libnixstore::init();
 
-    let c = match config::load() {
-        Ok(v) => web::Data::new(v),
-        Err(e) => {
-            log::error!("{e}");
-            e.chain()
-                .skip(1)
-                .for_each(|cause| log::error!("because: {}", cause));
-            std::process::exit(1);
-        }
-    };
+    let c = web::Data::new(config::load().with_context(|| "Failed to load configuration")?);
     let config_data = c.clone();
 
     log::info!("listening on {}", c.bind);
@@ -157,8 +152,7 @@ async fn main() -> std::io::Result<()> {
             } else if url.host().is_none() {
                 (url.path(), true)
             } else {
-                log::error!("Can only bind to file URLs without host portion.");
-                std::process::exit(1)
+                bail!("Can only bind to file URLs without host portion.");
             }
         } else {
             (c.bind.as_str(), false)
@@ -185,5 +179,12 @@ async fn main() -> std::io::Result<()> {
         server = server.bind(c.bind.clone())?;
     }
 
-    server.run().await
+    server.run().await.context("Failed to start server")
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    inner_main()
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
