@@ -24,6 +24,7 @@
           lib,
           config,
           pkgs,
+          self',
           ...
         }:
         {
@@ -35,6 +36,8 @@
                 inherit pkgs;
                 inherit (inputs) self;
               };
+              packages = lib.mapAttrs' (n: lib.nameValuePair "package-${n}") self'.packages;
+              devShells = lib.mapAttrs' (n: lib.nameValuePair "devShell-${n}") self'.devShells;
             in
             lib.optionalAttrs pkgs.stdenv.isLinux {
               t00-simple = import ./tests/t00-simple.nix testArgs;
@@ -45,7 +48,9 @@
             }
             // {
               clippy = config.packages.harmonia.override { enableClippy = true; };
-            };
+            }
+            // packages
+            // devShells;
           devShells.default = pkgs.callPackage ./shell.nix { };
 
           treefmt = {
