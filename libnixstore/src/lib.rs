@@ -29,7 +29,6 @@ mod ffi {
         fn query_path_hash(path: &str) -> Result<String>;
         fn query_path_info(path: &str, base32: bool) -> Result<InternalPathInfo>;
         fn query_path_from_hash_part(hash_part: &str) -> Result<String>;
-        fn convert_hash(algo: &str, s: &str, to_base_32: bool) -> Result<String>;
         fn sign_detached(secret_key: &[u8], msg: &str) -> Vec<u8>;
         fn get_store_dir() -> String;
         fn get_real_store_dir() -> String;
@@ -149,14 +148,6 @@ pub fn query_path_from_hash_part(hash_part: &str) -> Option<String> {
         Ok(v) => string_to_opt(v),
         Err(_) => None,
     }
-}
-
-#[inline]
-/// Parse the hash from a string representation in the format `[<type>:]<base16|base32|base64>` or
-/// `<type>-<base64>` to a string representation of the hash, in `base-16`, `base-32`. The result
-/// is not prefixed by the hash type.
-pub fn convert_hash(algo: &str, s: &str, to_radix: Radix) -> Result<String, cxx::Exception> {
-    ffi::convert_hash(algo, s, matches!(to_radix, Radix::Base32))
 }
 
 #[inline]
