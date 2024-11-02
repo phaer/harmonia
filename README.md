@@ -88,6 +88,8 @@ following default values will be used:
 ```toml
 # default ip:hostname to bind to
 bind = "[::]:5000"
+# unix socket are also supported
+# bind = "unix:/run/harmonia/socket"
 # Sets number of workers to start in the webserver
 workers = 4
 # Sets the per-worker maximum number of concurrent connections.

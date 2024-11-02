@@ -5,20 +5,23 @@
 
     nodes = {
       harmonia =
-        { config, pkgs, ... }:
+        { pkgs, ... }:
+        let
+          sock = "/run/harmonia/socket";
+        in
         {
           imports = [ ../module.nix ];
 
           services.harmonia-dev.enable = true;
+          services.harmonia-dev.settings.bind = "unix:${sock}";
 
           services.varnish = {
             enable = true;
             http_address = "0.0.0.0:80";
             config = ''
-              vcl 4.0;
+              vcl 4.1;
               backend harmonia {
-                .host = "::1";
-                .port = "5000";
+                .path = "${sock}";
               }
             '';
           };

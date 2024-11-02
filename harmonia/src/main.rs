@@ -1,6 +1,13 @@
 #![warn(clippy::dbg_macro)]
 
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::{fmt::Display, time::Duration};
+use url::Url;
 
 use actix_web::{http, web, App, HttpResponse, HttpServer};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
@@ -95,21 +102,11 @@ impl From<anyhow::Error> for ServerError {
 
 type ServerResult = Result<HttpResponse, ServerError>;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn inner_main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     libnixstore::init();
 
-    let c = match config::load() {
-        Ok(v) => web::Data::new(v),
-        Err(e) => {
-            log::error!("{e}");
-            e.chain()
-                .skip(1)
-                .for_each(|cause| log::error!("because: {}", cause));
-            std::process::exit(1);
-        }
-    };
+    let c = web::Data::new(config::load().with_context(|| "Failed to load configuration")?);
     let config_data = c.clone();
 
     log::info!("listening on {}", c.bind);
@@ -145,13 +142,51 @@ async fn main() -> std::io::Result<()> {
     .client_request_timeout(Duration::from_secs(30))
     .workers(c.workers)
     .max_connection_rate(c.max_connection_rate);
+
+    let try_url = Url::parse(&c.bind);
+    let (bind, uds) = {
+        if try_url.is_ok() {
+            let url = try_url.as_ref().unwrap();
+            if url.scheme() != "unix" {
+                (c.bind.as_str(), false)
+            } else if url.host().is_none() {
+                (url.path(), true)
+            } else {
+                bail!("Can only bind to file URLs without host portion.");
+            }
+        } else {
+            (c.bind.as_str(), false)
+        }
+    };
+
     if c.tls_cert_path.is_some() || c.tls_key_path.is_some() {
+        if uds {
+            log::error!("TLS is not supported with Unix domain sockets.");
+            std::process::exit(1);
+        }
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         builder.set_private_key_file(c.tls_key_path.clone().unwrap(), SslFiletype::PEM)?;
         builder.set_certificate_chain_file(c.tls_cert_path.clone().unwrap())?;
         server = server.bind_openssl(c.bind.clone(), builder)?;
+    } else if uds {
+        if !cfg!(unix) {
+            log::error!("Binding to Unix domain sockets is only supported on Unix.");
+            std::process::exit(1);
+        } else {
+            let socket_path = Path::new(bind);
+            server = server.bind_uds(socket_path)?;
+            fs::set_permissions(socket_path, fs::Permissions::from_mode(0o777))?;
+        }
     } else {
         server = server.bind(c.bind.clone())?;
     }
-    server.run().await
+
+    server.run().await.context("Failed to start server")
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    inner_main()
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
