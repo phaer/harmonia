@@ -173,7 +173,9 @@ async fn inner_main() -> Result<()> {
             log::error!("Binding to Unix domain sockets is only supported on Unix.");
             std::process::exit(1);
         } else {
-            server = server.bind_uds(Path::new(bind))?
+            let socket_path = Path::new(bind);
+            server = server.bind_uds(socket_path)?;
+            fs::set_permissions(socket_path, fs::Permissions::from_mode(0o777))?;
         }
     } else {
         server = server.bind(c.bind.clone())?;

@@ -26,12 +26,6 @@
             '';
           };
 
-          systemd.sockets.harmonia-dev = {
-            listenStreams = [ sock ];
-            requiredBy = ["harmonia-dev.service"];
-            socketConfig.SocketGroup = "varnish";
-          };
-
           networking.firewall.allowedTCPPorts = [ 80 ];
           environment.systemPackages = [ pkgs.hello ];
         };
