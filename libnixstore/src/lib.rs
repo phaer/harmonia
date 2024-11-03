@@ -66,26 +66,6 @@ pub struct PathInfo {
     pub ca: Option<String>,
 }
 
-pub struct Drv {
-    /// The mapping from output names to to realised outpaths, or `None` for outputs which are not
-    /// realised in this store.
-    pub outputs: std::collections::HashMap<String, Option<String>>,
-    /// The paths of this derivation's input derivations.
-    pub input_drvs: Vec<String>,
-    /// The paths of this derivation's input sources; these are files which enter the nix store as a
-    /// result of `nix-store --add` or a `./path` reference.
-    pub input_srcs: Vec<String>,
-    /// The `system` field of the derivation.
-    pub platform: String,
-    /// The `builder` field of the derivation, which is executed in order to realise the
-    /// derivation's outputs.
-    pub builder: String,
-    /// The arguments passed to `builder`.
-    pub args: Vec<String>,
-    /// The environment with which the `builder` is executed.
-    pub env: std::collections::HashMap<String, String>,
-}
-
 /// Nix's `libstore` offers two options for representing the
 /// hash-part of store paths.
 pub enum Radix {
