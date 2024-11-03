@@ -42,7 +42,7 @@
       harmonia.systemctl("start harmonia-dev.service")
       harmonia.wait_for_unit("harmonia-dev.service")
 
-      client01.wait_until_succeeds("curl -f http://harmonia:5000/version")
+      client01.wait_until_succeeds("timeout 1 curl -f http://harmonia:5000/version")
       client01.succeed("curl -f http://harmonia:5000/nix-cache-info")
 
       client01.wait_until_succeeds(f"nix copy --from http://harmonia:5000/ {f}")

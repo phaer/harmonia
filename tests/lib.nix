@@ -3,14 +3,11 @@ test:
   pkgs ? import <nixpkgs> { },
   ...
 }@args:
-let
-  inherit (pkgs) lib;
-  nixos-lib = import (pkgs.path + "/nixos/lib") { };
-in
-(nixos-lib.runTest {
-  hostPkgs = pkgs;
+(pkgs.testers.runNixOSTest {
   # speed-up evaluation
-  defaults.documentation.enable = lib.mkDefault false;
+  defaults.documentation.enable = pkgs.lib.mkDefault false;
+  # Faster dhcp
+  defaults.networking.useNetworkd = pkgs.lib.mkDefault true;
   # to accept external dependencies such as disko
   node.specialArgs.inputs = args;
   imports = [ test ];

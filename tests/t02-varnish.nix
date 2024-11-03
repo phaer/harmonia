@@ -44,7 +44,7 @@
     testScript = ''
       start_all()
 
-      client01.wait_until_succeeds("curl -f http://harmonia/version")
+      client01.wait_until_succeeds("timeout 1 curl -f http://harmonia/version")
       client01.succeed("curl -f http://harmonia/nix-cache-info")
 
       client01.wait_until_succeeds("nix copy --from http://harmonia/ ${pkgs.hello}")
