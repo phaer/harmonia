@@ -33,7 +33,6 @@ mod ffi {
         fn get_store_dir() -> String;
         fn get_real_store_dir() -> String;
         fn get_build_log(derivation_path: &str) -> Result<String>;
-        fn get_nar_list(store_path: &str) -> Result<String>;
     }
 }
 
@@ -178,10 +177,4 @@ pub fn get_build_log(derivation_path: &str) -> Option<String> {
         Ok(v) => string_to_opt(v),
         Err(_) => None,
     }
-}
-
-#[inline]
-/// Return a JSON representation as String of the contents of a NAR (except file contents).
-pub fn get_nar_list(store_path: &str) -> Result<String, cxx::Exception> {
-    ffi::get_nar_list(store_path)
 }
