@@ -10,6 +10,17 @@ use crate::config::SigningKey;
 // omitted: E O U T
 const BASE32_CHARS: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
 
+#[link(name = "sodium")]
+extern "C" {
+    fn crypto_sign_detached(
+        sig: *mut u8,
+        sig_len: *mut usize,
+        msg: *const u8,
+        msg_len: usize,
+        sk: *const u8,
+    ) -> i32;
+}
+
 /// Converts the given byte slice to a nix-compatible base32 encoded String.
 fn to_nix_base32(bytes: &[u8]) -> String {
     let len = (bytes.len() * 8 - 1) / 5 + 1;
@@ -127,8 +138,19 @@ pub(crate) fn fingerprint_path(
 }
 
 pub(crate) fn sign_string(sign_key: &SigningKey, msg: &str) -> String {
-    let signature = libnixstore::sign_detached(&sign_key.key, msg);
-    let base64 = general_purpose::STANDARD.encode(signature);
+    let mut signature = vec![0u8; 64]; // crypto_sign_BYTES -> 64
+    let mut signature_len: usize = 0;
+    let msg = msg.as_bytes();
+    unsafe {
+        crypto_sign_detached(
+            signature.as_mut_ptr(),
+            &mut signature_len,
+            msg.as_ptr(),
+            msg.len(),
+            sign_key.key.as_ptr(),
+        )
+    };
+    let base64 = general_purpose::STANDARD.encode(&signature[..signature_len]);
     format!("{}:{}", sign_key.name, base64)
 }
 

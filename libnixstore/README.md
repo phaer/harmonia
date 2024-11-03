@@ -1,16 +1,12 @@
 # libnixstore
 
-Is a library that provides simple access to your local nix store, based on c++
-bindings. It mimics the already available perl bindings but also adds bindings
-on top, that might be useful.
+These are libnix bindings required by harmonia to communicate with the local nix daemon.
+Over time we will replace the dependencies on libnix with rust-native code.
 
 Note: This project provides bindings, this makes the project automatically unsafe.
 
 Supported nix version:
-- nix 2.8
-- nix 2.9
-- nix 2.10
-- nix 2.11
+- nix 2.24
 
 ## Requirements
 
@@ -26,7 +22,6 @@ stdenv.mkDerivation {
     # required
     nix
     nlohmann_json
-    libsodium
     boost
 
     # additional packages you might need

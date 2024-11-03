@@ -14,7 +14,6 @@
 #include <nix/nar-accessor.hh>
 
 #include <nlohmann/json.hpp>
-#include <sodium.h>
 
 #include <stdlib.h>
 
@@ -125,22 +124,6 @@ InternalPathInfo query_path_info(rust::Str path, bool base32) {
 rust::String query_path_from_hash_part(rust::Str hash_part) {
   return extract_opt_path(
       get_store()->queryPathFromHashPart(STRING_VIEW(hash_part)));
-}
-
-rust::Vec<unsigned char>
-sign_detached(rust::Slice<const unsigned char> secret_key, rust::Str msg) {
-  rust::Vec<unsigned char> sig;
-  sig.reserve(crypto_sign_BYTES);
-  unsigned long long sigLen;
-  for (size_t i = 0; i < crypto_sign_BYTES; i++) {
-    sig.push_back(0);
-  }
-
-  crypto_sign_detached(sig.data(), &sigLen, (unsigned char *)msg.data(),
-                       msg.size(), (unsigned char *)secret_key.data());
-  sig.truncate(sigLen);
-
-  return sig;
 }
 
 rust::String get_store_dir() {
