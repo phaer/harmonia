@@ -195,13 +195,4 @@ rust::String get_build_log(rust::Str derivation_path) {
   return "";
 }
 
-rust::String get_nar_list(rust::Str store_path) {
-  auto path = nix::CanonPath(STRING_VIEW(store_path));
-  nlohmann::json j = {
-      {"version", 1},
-      {"root", listNar(get_store()->getFSAccessor(), path, true)},
-  };
-
-  return j.dump();
-}
 } // namespace libnixstore

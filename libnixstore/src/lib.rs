@@ -33,7 +33,6 @@ mod ffi {
         fn get_store_dir() -> String;
         fn get_real_store_dir() -> String;
         fn get_build_log(derivation_path: &str) -> Result<String>;
-        fn get_nar_list(store_path: &str) -> Result<String>;
     }
 }
 
@@ -65,26 +64,6 @@ pub struct PathInfo {
     /// `String` value contains the content hash as well as "some other bits of data"; see
     /// `path-info.hh` for details.
     pub ca: Option<String>,
-}
-
-pub struct Drv {
-    /// The mapping from output names to to realised outpaths, or `None` for outputs which are not
-    /// realised in this store.
-    pub outputs: std::collections::HashMap<String, Option<String>>,
-    /// The paths of this derivation's input derivations.
-    pub input_drvs: Vec<String>,
-    /// The paths of this derivation's input sources; these are files which enter the nix store as a
-    /// result of `nix-store --add` or a `./path` reference.
-    pub input_srcs: Vec<String>,
-    /// The `system` field of the derivation.
-    pub platform: String,
-    /// The `builder` field of the derivation, which is executed in order to realise the
-    /// derivation's outputs.
-    pub builder: String,
-    /// The arguments passed to `builder`.
-    pub args: Vec<String>,
-    /// The environment with which the `builder` is executed.
-    pub env: std::collections::HashMap<String, String>,
 }
 
 /// Nix's `libstore` offers two options for representing the
@@ -178,10 +157,4 @@ pub fn get_build_log(derivation_path: &str) -> Option<String> {
         Ok(v) => string_to_opt(v),
         Err(_) => None,
     }
-}
-
-#[inline]
-/// Return a JSON representation as String of the contents of a NAR (except file contents).
-pub fn get_nar_list(store_path: &str) -> Result<String, cxx::Exception> {
-    ffi::get_nar_list(store_path)
 }
