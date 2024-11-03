@@ -26,7 +26,6 @@ mod ffi {
 
         fn init();
         fn is_valid_path(path: &str) -> Result<bool>;
-        fn query_path_hash(path: &str) -> Result<String>;
         fn query_path_info(path: &str, base32: bool) -> Result<InternalPathInfo>;
         fn query_path_from_hash_part(hash_part: &str) -> Result<String>;
         fn get_store_dir() -> String;
@@ -92,12 +91,6 @@ pub fn init() {
 /// Check whether a path is valid.
 pub fn is_valid_path(path: &str) -> bool {
     ffi::is_valid_path(path).unwrap_or(false)
-}
-
-#[inline]
-/// Return narhash of a valid path. It is permitted to omit the name part of the store path.
-pub fn query_path_hash(path: &str) -> Result<String, cxx::Exception> {
-    ffi::query_path_hash(path)
 }
 
 #[inline]
