@@ -29,7 +29,6 @@ mod ffi {
         fn query_path_hash(path: &str) -> Result<String>;
         fn query_path_info(path: &str, base32: bool) -> Result<InternalPathInfo>;
         fn query_path_from_hash_part(hash_part: &str) -> Result<String>;
-        fn sign_detached(secret_key: &[u8], msg: &str) -> Vec<u8>;
         fn get_store_dir() -> String;
         fn get_real_store_dir() -> String;
         fn get_build_log(derivation_path: &str) -> Result<String>;
@@ -127,12 +126,6 @@ pub fn query_path_from_hash_part(hash_part: &str) -> Option<String> {
         Ok(v) => string_to_opt(v),
         Err(_) => None,
     }
-}
-
-#[inline]
-/// Return a detached signature of the given string.
-pub fn sign_detached(secret_key: &[u8], msg: &str) -> Vec<u8> {
-    ffi::sign_detached(secret_key, msg)
 }
 
 #[inline]

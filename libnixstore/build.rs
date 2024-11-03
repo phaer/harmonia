@@ -5,7 +5,6 @@ fn main() {
 
     pkg_config::probe_library("nix-store").unwrap();
     pkg_config::probe_library("nix-main").unwrap();
-    pkg_config::probe_library("libsodium").unwrap();
 
     let includedir =
         pkg_config::get_variable("nix-store", "includedir").expect("Failed to get includedir");

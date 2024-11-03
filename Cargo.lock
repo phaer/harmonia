@@ -705,6 +705,7 @@ dependencies = [
  "mime",
  "openssl",
  "percent-encoding",
+ "pkg-config",
  "serde",
  "serde_json",
  "tempfile",

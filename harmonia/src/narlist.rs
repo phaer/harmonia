@@ -14,6 +14,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs::symlink_metadata;
 
+fn is_false(b: &bool) -> bool {
+    !b
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(tag = "type")]
 enum NarEntry {
@@ -24,7 +28,8 @@ enum NarEntry {
         #[serde(rename = "narOffset")]
         nar_offset: Option<u64>,
         size: u64,
-        #[serde(default)]
+
+        #[serde(default, skip_serializing_if = "is_false")]
         executable: bool,
     },
     #[serde(rename = "symlink")]
@@ -236,7 +241,6 @@ mod test {
             .unwrap();
         let parsed_json: serde_json::Value = serde_json::from_slice(&res2.stdout).unwrap();
         let pretty_string = serde_json::to_string_pretty(&parsed_json).unwrap();
-        println!("{}", pretty_string);
         assert!(res2.status.success());
         let mut reference_json: NarEntry = serde_json::from_str(&pretty_string).unwrap();
 
@@ -244,9 +248,9 @@ mod test {
         unset_nar_offset(&mut reference_json);
 
         println!("get_nar_list:");
-        println!("{:?}", json.root);
+        println!("{}", serde_json::to_string_pretty(&json.root).unwrap());
         println!("nix nar ls --json --recursive:");
-        println!("{:?}", reference_json);
+        println!("{}", pretty_string);
         assert_eq!(json.root, reference_json);
 
         Ok(())
