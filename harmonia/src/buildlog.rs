@@ -49,54 +49,58 @@ pub(crate) async fn get(
     settings: web::Data<Config>,
 ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
     let drv_path = some_or_404!(query_drv_path(&drv));
-    if libnixstore::is_valid_path(&drv_path) {
-        let build_log = some_or_404!(get_build_log(
-            settings.store.real_store(),
-            &PathBuf::from(drv_path)
-        ));
-        if let Some(ext) = build_log.extension() {
-            let accept_encoding = req
-                .headers()
-                .get(http::header::ACCEPT_ENCODING)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("");
-
-            if ext == "bz2" && !accept_encoding.contains("bzip2") {
-                // Decompress the bz2 file and serve the decompressed content
-                let file = tokio::fs::File::open(&build_log).await.with_context(|| {
-                    format!("Failed to open build log: {:?}", build_log.display())
-                })?;
-                let reader = BufReader::new(file);
-                let decompressed_stream = BzDecoder::new(reader);
-                let stream = ReaderStream::new(decompressed_stream);
-                let body = actix_web::body::BodyStream::new(stream);
-
-                return Ok(HttpResponse::Ok()
-                    .insert_header(cache_control_max_age_1y())
-                    .insert_header(http::header::ContentType(mime::TEXT_PLAIN_UTF_8))
-                    .body(body));
-            } else {
-                // Serve the file as-is with the appropriate Content-Encoding header
-                let encoding = if ext == "bz2" {
-                    HeaderValue::from_static("bzip2")
-                } else {
-                    HeaderValue::from_static("identity")
-                };
-
-                let log = NamedFile::open_async(&build_log)
-                    .await
-                    .with_context(|| {
-                        format!("Failed to open build log: {:?}", build_log.display())
-                    })?
-                    .customize()
-                    .insert_header(cache_control_max_age_1y())
-                    .insert_header(("Content-Encoding", encoding));
-
-                return Ok(log.respond_to(&req).map_into_boxed_body());
-            }
-        }
+    if !libnixstore::is_valid_path(&drv_path) {
+        return Ok(HttpResponse::NotFound()
+            .insert_header(cache_control_no_store())
+            .finish());
     }
-    Ok(HttpResponse::NotFound()
-        .insert_header(cache_control_no_store())
-        .finish())
+    let build_log = some_or_404!(get_build_log(
+        settings.store.real_store(),
+        &PathBuf::from(drv_path)
+    ));
+    let ext = match build_log.extension() {
+        Some(ext) => ext,
+        None => {
+            return Ok(HttpResponse::NotFound()
+                .insert_header(cache_control_no_store())
+                .finish())
+        }
+    };
+    let accept_encoding = req
+        .headers()
+        .get(http::header::ACCEPT_ENCODING)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+
+    if ext == "bz2" && !accept_encoding.contains("bzip2") {
+        // Decompress the bz2 file and serve the decompressed content
+        let file = tokio::fs::File::open(&build_log)
+            .await
+            .with_context(|| format!("Failed to open build log: {:?}", build_log.display()))?;
+        let reader = BufReader::new(file);
+        let decompressed_stream = BzDecoder::new(reader);
+        let stream = ReaderStream::new(decompressed_stream);
+        let body = actix_web::body::BodyStream::new(stream);
+
+        return Ok(HttpResponse::Ok()
+            .insert_header(cache_control_max_age_1y())
+            .insert_header(http::header::ContentType(mime::TEXT_PLAIN_UTF_8))
+            .body(body));
+    }
+
+    // Serve the file as-is with the appropriate Content-Encoding header
+    let encoding = if ext == "bz2" {
+        HeaderValue::from_static("bzip2")
+    } else {
+        HeaderValue::from_static("identity")
+    };
+
+    let log = NamedFile::open_async(&build_log)
+        .await
+        .with_context(|| format!("Failed to open build log: {:?}", build_log.display()))?
+        .customize()
+        .insert_header(cache_control_max_age_1y())
+        .insert_header(("Content-Encoding", encoding));
+
+    Ok(log.respond_to(&req).map_into_boxed_body())
 }
