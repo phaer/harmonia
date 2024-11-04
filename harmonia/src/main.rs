@@ -15,6 +15,7 @@ use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 mod buildlog;
 mod cacheinfo;
 mod config;
+mod daemon;
 mod health;
 mod nar;
 mod narinfo;
