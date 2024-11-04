@@ -73,12 +73,6 @@ bool is_valid_path(rust::Str path) {
   return store->isValidPath(store->parseStorePath(STRING_VIEW(path)));
 }
 
-rust::String query_path_hash(rust::Str path) {
-  auto store = get_store();
-  return store->queryPathInfo(store->parseStorePath(STRING_VIEW(path)))
-      ->narHash.to_string(nix::HashFormat::Nix32, true);
-}
-
 InternalPathInfo query_path_info(rust::Str path, bool base32) {
   auto store = get_store();
   nix::ref<const nix::ValidPathInfo> info =
