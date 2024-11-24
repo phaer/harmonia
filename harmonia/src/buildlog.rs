@@ -49,10 +49,18 @@ pub(crate) async fn get(
     settings: web::Data<Config>,
 ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
     let drv_path = some_or_404!(query_drv_path(&drv));
-    if !libnixstore::is_valid_path(&drv_path) {
-        return Ok(HttpResponse::NotFound()
-            .insert_header(cache_control_no_store())
-            .finish());
+    match settings.store.daemon.lock().await.is_valid_path(drv_path.as_bytes()).await {
+        Ok(true) => (),
+        Ok(false) => {
+            return Ok(HttpResponse::NotFound()
+                .insert_header(cache_control_no_store())
+                .finish())
+        }
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError()
+                .insert_header(cache_control_no_store())
+                .body(format!("Failed to query path info: {}", e)))
+        }
     }
     let build_log = some_or_404!(get_build_log(
         settings.store.real_store(),
