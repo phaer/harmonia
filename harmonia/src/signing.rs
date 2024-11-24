@@ -66,7 +66,7 @@ fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Vec<u8>> {
         .collect()
 }
 
-fn convert_base16_to_nix32(hash_str: &str) -> Result<String> {
+pub(crate) fn convert_base16_to_nix32(hash_str: &str) -> Result<String> {
     let bytes =
         from_hex(hash_str).with_context(|| format!("Failed to convert hash: {}", hash_str))?;
     Ok(to_nix_base32(&bytes))
