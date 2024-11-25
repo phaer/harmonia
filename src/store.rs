@@ -12,22 +12,10 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new() -> Self {
-        let real_store = "/nix/store".to_string();
-        let virtual_store = real_store.clone();
-
-        assert!(str::from_utf8(virtual_store.as_bytes()).is_ok());
-
-        if virtual_store == real_store {
-            return Self {
-                virtual_store,
-                real_store: None,
-                daemon: Default::default(),
-            };
-        }
+    pub fn new(virtual_store: String, real_store: Option<String>) -> Self {
         Self {
             virtual_store,
-            real_store: Some(real_store),
+            real_store,
             daemon: Default::default(),
         }
     }

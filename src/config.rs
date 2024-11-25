@@ -21,6 +21,10 @@ fn default_priority() -> usize {
     30
 }
 
+fn default_virtual_store() -> String {
+    "/nix/store".into()
+}
+
 #[derive(Debug)]
 pub(crate) struct SigningKey {
     pub(crate) name: String,
@@ -38,6 +42,12 @@ pub(crate) struct Config {
     pub(crate) max_connection_rate: usize,
     #[serde(default = "default_priority")]
     pub(crate) priority: usize,
+
+    #[serde(default = "default_virtual_store")]
+    pub(crate) virtual_nix_store: String,
+
+    pub(crate) real_nix_store: Option<String>,
+
     #[serde(default)]
     pub(crate) sign_key_path: Option<String>,
     #[serde(default)]
@@ -87,6 +97,7 @@ pub(crate) fn load() -> Result<Config> {
                 )
             })?);
     }
-    settings.store = Store::new();
+    let store_dir = std::env::var("NIX_STORE_DIR").unwrap_or(settings.virtual_nix_store.clone());
+    settings.store = Store::new(store_dir, settings.real_nix_store.clone());
     Ok(settings)
 }
