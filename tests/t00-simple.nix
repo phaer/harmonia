@@ -9,6 +9,8 @@
 
       # check unicode
       echo test > "$out/🦄"
+      # check invalid utf-8
+      touch $(echo -e "test\x80")
     '';
   in
   {
@@ -78,6 +80,11 @@
         out = client01.wait_until_succeeds("curl -v http://harmonia:5000/serve/${hashPart testServe}/🦄").strip()
         print(out)
         assert "test" == out, f"expected 'test', got '{out}'"
+
+        # TODO: this is still broken
+        #out = client01.wait_until_succeeds("curl -v http://harmonia:5000/serve/${hashPart testServe}/test\\x80").strip()
+        #print(out)
+        #assert "test" == out, f"expected 'test', got '{out}'"
       '';
   }
 )
