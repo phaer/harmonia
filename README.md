@@ -12,12 +12,14 @@ It's written in Rust for speed.
     `nix-index`
 - Add `/serve/<narhash>/` endpoint to allow serving the content of package. 
   Also discovers index.html to allow serving websites directly from the nix store.
+- Content is compressed transparently with [zstd](https://en.wikipedia.org/wiki/Zstd).
+- Builtin TLS: when no frontend webserver is used, Harmonia can also provide TLS encryption
 
 ## Configuration for public binary cache on NixOS
 
 There is a module for harmonia in nixpkgs.
 The following example set's up harmonia as a public binary cache using
-nginx as a frontend webserver with https encryption and zstd for compression:
+nginx as a frontend webserver with https encryption:
 
 ```nix
 { config, pkgs, ... }: {
