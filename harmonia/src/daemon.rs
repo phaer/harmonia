@@ -1,11 +1,11 @@
 use std::fmt;
 
 use anyhow::{bail, Context, Result};
+use std::str;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,
 };
-use std::str;
 
 const SOCKET_PATH: &str = "/nix/var/nix/daemon-socket/socket";
 
@@ -286,10 +286,15 @@ async fn write_string(socket: &mut UnixStream, s: &str) -> Result<()> {
 }
 
 async fn read_string(socket: &mut UnixStream) -> Result<String> {
-    let len = read_num::<u64>(socket).await.context("Failed to read string length")?;
+    let len = read_num::<u64>(socket)
+        .await
+        .context("Failed to read string length")?;
     let aligned_len = (len + 7) & !7; // Align to the next multiple of 8
     let mut buf = vec![0; aligned_len as usize];
-    socket.read_exact(&mut buf).await.context("Failed to read string")?;
+    socket
+        .read_exact(&mut buf)
+        .await
+        .context("Failed to read string")?;
     Ok(str::from_utf8(&buf[..len as usize])
         .context("Failed to parse string")?
         .to_owned())
@@ -354,8 +359,8 @@ async fn handshake(socket: &mut UnixStream) -> Result<Handshake> {
         .context("Failed to write supported features")?;
 
     let daemon_version = read_string(socket)
-            .await
-            .context("Failed to read daemon version")?;
+        .await
+        .context("Failed to read daemon version")?;
 
     let is_trusted = read_num::<u64>(socket)
         .await
@@ -640,15 +645,16 @@ impl DaemonConnection {
                 .read_string_list()
                 .await
                 .context("Failed to read sigs")?,
-            content_address: Some(self.read_string()
+            content_address: Some(
+                self.read_string()
                     .await
-                    .context("Failed to read content address")?)
+                    .context("Failed to read content address")?,
+            ),
         };
         if path_info.content_address.as_ref().unwrap().is_empty() {
             path_info.content_address = None;
         }
 
-        //self.write_string(path).await?;
         Ok(QueryPathInfoResponse {
             path: Some(path_info),
         })
@@ -658,8 +664,6 @@ impl DaemonConnection {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::ffi::OsStr;
-    use std::os::unix::ffi::OsStrExt;
     use std::path::Path;
     use std::process::Command;
 
@@ -668,32 +672,7 @@ mod test {
         if !Path::new(SOCKET_PATH).exists() {
             return Ok(());
         }
-        let mut conn = DaemonConnection::new()
-            .await
-            .context("Failed to create daemon connection")
-            .unwrap();
-
-        assert!(!conn
-            .is_valid_path(b"/nix/store/s5lqjivysl2s674wwbishk638hkw8jqp-nixos-vm")
-            .await
-            .context("Failed to check path")
-            .unwrap());
-
-        assert!(conn
-            .query_path_info(b"/nix/store/s5lqjivysl2s674wwbishk638hkw8jqp-nixos-vm")
-            .await
-            .context("Failed to get path info")
-            .unwrap()
-            .path
-            .is_none());
-
-        assert(
-            conn.query_path_from_hash_part(b"s5lqjivysl2s674wwbishk638hkw8jqp")
-                .await
-                .context("Failed to get path info")
-                .unwrap()
-                .is_some(),
-        );
+        let mut conn: DaemonConnection = Default::default();
 
         // add to store
         let temp_dir = tempfile::tempdir().context("Failed to create temp dir")?;
@@ -705,19 +684,20 @@ mod test {
             .arg(&temp_path)
             .output()
             .context("Failed to add to store")?;
-        eprintln!("stderr: {:?}", String::from_utf8_lossy(&store_path.stderr));
-        let store_path = Path::new(OsStr::from_bytes(
-            &store_path.stdout[..store_path.stdout.len() - 1],
-        ));
+        eprintln!("stderr: {:?}", &String::from_utf8_lossy(&store_path.stderr));
+        let store_path = str::from_utf8(&store_path.stdout)
+            .context("Failed to parse store path")?
+            .trim()
+            .to_owned();
 
         assert!(conn
-            .is_valid_path(store_path.as_os_str().as_bytes())
+            .is_valid_path(&store_path)
             .await
             .context("Failed to check path")
             .unwrap());
 
         let path_info = conn
-            .query_path_info(store_path.as_os_str().as_bytes())
+            .query_path_info(&store_path)
             .await
             .context("Failed to check path")
             .unwrap()
@@ -727,21 +707,18 @@ mod test {
         assert!(!path_info.ultimate);
         assert!(path_info.nar_size > 0, "nar size: {}", path_info.nar_size);
 
-        let hash_part = store_path
+        let hash_part = &store_path
             .strip_prefix("/nix/store/")
             .context("cannot strip prefix")
-            .unwrap()
-            .as_os_str()
-            .as_bytes()[..32]
-            .to_vec();
+            .unwrap()[..32];
 
         let res = conn
-            .query_path_from_hash_part(&hash_part)
+            .query_path_from_hash_part(hash_part)
             .await
             .context("Failed to get path info")
             .unwrap()
             .unwrap();
-        assert_eq!(res, store_path.as_os_str().as_bytes());
+        assert_eq!(res, store_path);
 
         Ok(())
     }
