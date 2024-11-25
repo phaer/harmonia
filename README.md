@@ -49,6 +49,13 @@ nginx as a frontend webserver with https encryption and zstd for compression:
     virtualHosts."cache.yourdomain.tld" = {
       enableACME = true;
       forceSSL = true;
+
+      # When using http2 we actually see worse throughput,
+      # because it only uses a single tcp connection,
+      # which pins nginx to a single core.
+      # In future harmonia might do zstd compression itself and avoid this issue.
+      http2 = false;
+
       locations."/".extraConfig = ''
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host $host;
@@ -63,6 +70,11 @@ nginx as a frontend webserver with https encryption and zstd for compression:
       '';
     };
   };
+
+  # use more cores for compression
+  services.nginx.appendConfig = ''
+    worker_processes auto;
+  '';
 }
 ```
 

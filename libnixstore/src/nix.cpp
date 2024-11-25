@@ -41,24 +41,6 @@ static nix::ref<nix::Store> get_store() {
   return nix::ref<nix::Store>(_store);
 }
 
-static inline rust::String
-extract_opt_path(const std::optional<nix::StorePath> &v) {
-  // TODO(conni2461): Replace with option
-  return v ? get_store()->printStorePath(*v) : "";
-}
-
-static inline rust::Vec<rust::String>
-extract_path_set(const nix::StorePathSet &set) {
-  auto store = get_store();
-
-  rust::Vec<rust::String> data;
-  data.reserve(set.size());
-  for (const nix::StorePath &path : set) {
-    data.push_back(store->printStorePath(path));
-  }
-  return data;
-}
-
 // shorthand to create std::string_view from rust::Str, we dont wan't to create
 // std::string because that involves allocating memory
 #define STRING_VIEW(rstr) std::string(rstr.data(), rstr.length())
@@ -66,44 +48,6 @@ extract_path_set(const nix::StorePathSet &set) {
 namespace libnixstore {
 void init() {
   get_store();
-}
-
-bool is_valid_path(rust::Str path) {
-  auto store = get_store();
-  return store->isValidPath(store->parseStorePath(STRING_VIEW(path)));
-}
-
-InternalPathInfo query_path_info(rust::Str path, bool base32) {
-  auto store = get_store();
-  nix::ref<const nix::ValidPathInfo> info =
-      store->queryPathInfo(store->parseStorePath(STRING_VIEW(path)));
-
-  std::string narhash = info->narHash.to_string(
-      base32 ? nix::HashFormat::Nix32 : nix::HashFormat::Base16, true);
-
-  rust::Vec<rust::String> refs = extract_path_set(info->references);
-
-  rust::Vec<rust::String> sigs;
-  sigs.reserve(info->sigs.size());
-  for (const std::string &sig : info->sigs) {
-    sigs.push_back(sig);
-  }
-
-  // TODO(conni2461): Replace "" with option
-  return InternalPathInfo{
-      extract_opt_path(info->deriver),
-      narhash,
-      info->registrationTime,
-      info->narSize,
-      refs,
-      sigs,
-      info->ca ? nix::renderContentAddress(*info->ca) : "",
-  };
-}
-
-rust::String query_path_from_hash_part(rust::Str hash_part) {
-  return extract_opt_path(
-      get_store()->queryPathFromHashPart(STRING_VIEW(hash_part)));
 }
 
 rust::String get_store_dir() {

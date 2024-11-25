@@ -1,10 +1,13 @@
+use crate::daemon::DaemonConnection;
 use std::path::Path;
 use std::path::PathBuf;
+use tokio::sync::Mutex;
 
 #[derive(Default, Debug)]
 pub struct Store {
     virtual_store: PathBuf,
     real_store: Option<PathBuf>,
+    pub daemon: Mutex<DaemonConnection>,
 }
 
 impl Store {
@@ -16,11 +19,13 @@ impl Store {
             return Self {
                 virtual_store: PathBuf::from(virtual_store),
                 real_store: None,
+                daemon: Default::default(),
             };
         }
         Self {
             virtual_store: PathBuf::from(virtual_store),
             real_store: Some(PathBuf::from(real_store)),
+            daemon: Default::default(),
         }
     }
     pub fn get_real_path(&self, virtual_path: &Path) -> PathBuf {

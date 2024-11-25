@@ -5,7 +5,6 @@ use std::mem::size_of;
 use actix_web::web::Bytes;
 use actix_web::{http, web, HttpRequest, HttpResponse};
 use anyhow::{bail, Context, Result};
-use libnixstore::Radix;
 use serde::Deserialize;
 use std::fs::{self, Metadata};
 use std::os::unix::ffi::OsStrExt;
@@ -16,6 +15,7 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
 use crate::config::Config;
+use crate::signing::convert_base16_to_nix32;
 use crate::{cache_control_max_age_1y, some_or_404};
 use std::ffi::{OsStr, OsString};
 use tokio::{sync, task};
@@ -332,29 +332,73 @@ pub(crate) async fn get(
     let narhash = some_or_404!(Some(path.narhash.as_str()));
 
     // lookup the store path.
-    let store_path = some_or_404!({
-        // We usually extract the outhash from the query parameter.
-        // However, when processing nix-serve URLs, it's present in the path
-        // directly.
-        if let Some(outhash) = &q.hash {
-            Some(outhash.as_str())
-        } else {
-            path.outhash.as_deref()
+    // We usually extract the outhash from the query parameter.
+    // However, when processing nix-serve URLs, it's present in the path
+    // directly.
+    let outhash = if let Some(outhash) = &q.hash {
+        Some(outhash.as_str())
+    } else {
+        path.outhash.as_deref()
+    };
+    let store_path = match outhash {
+        Some(outhash) => settings
+            .store
+            .daemon
+            .lock()
+            .await
+            .query_path_from_hash_part(outhash)
+            .await
+            .context("failed to query path from hash part")?,
+        None => {
+            return Ok(HttpResponse::NotFound()
+                .insert_header(crate::cache_control_no_store())
+                .body("missing outhash"))
         }
-    }
-    .and_then(libnixstore::query_path_from_hash_part));
+    };
+    let store_path = match store_path {
+        Some(store_path) => store_path,
+        None => {
+            return Ok(HttpResponse::NotFound()
+                .insert_header(crate::cache_control_no_store())
+                .body("store path not found"))
+        }
+    };
 
     // lookup the path info.
-    let info = libnixstore::query_path_info(&store_path, Radix::default())?;
-    // ensure the narhash specified in the request matches.
-    if format!("sha256:{}", narhash) != info.narhash {
+    let info = match settings
+        .store
+        .daemon
+        .lock()
+        .await
+        .query_path_info(&store_path)
+        .await?
+        .path
+    {
+        Some(info) => info,
+        None => {
+            return Ok(HttpResponse::NotFound()
+                .insert_header(crate::cache_control_no_store())
+                .body("path info not found"))
+        }
+    };
+
+    let info_hash_nix32 = match convert_base16_to_nix32(&info.hash) {
+        Ok(info_hash_nix32) => info_hash_nix32,
+        Err(_) => {
+            return Ok(HttpResponse::InternalServerError()
+                .insert_header(crate::cache_control_no_store())
+                .body("failed to convert hash to nix32"));
+        }
+    };
+    if narhash != info_hash_nix32 {
         return Ok(HttpResponse::NotFound()
             .insert_header(crate::cache_control_no_store())
             .body("hash mismatch detected"));
     }
-    let store_path = PathBuf::from(&store_path);
 
-    let mut rlength = info.size;
+    let store_path = PathBuf::from(store_path);
+
+    let mut rlength = info.nar_size;
     let offset;
     let mut res = HttpResponse::Ok();
 
@@ -376,7 +420,12 @@ pub(crate) async fn get(
 
                 res.insert_header((
                     http::header::CONTENT_RANGE,
-                    format!("bytes {}-{}/{}", offset, offset + rlength - 1, info.size),
+                    format!(
+                        "bytes {}-{}/{}",
+                        offset,
+                        offset + rlength - 1,
+                        info.nar_size
+                    ),
                 ));
             } else {
                 res.insert_header((http::header::CONTENT_RANGE, format!("bytes */{}", rlength)));

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use anyhow::{bail, Context, Result};
+use std::str;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,
@@ -8,10 +9,11 @@ use tokio::{
 
 const SOCKET_PATH: &str = "/nix/var/nix/daemon-socket/socket";
 
-struct DaemonConnection {
-    socket: UnixStream,
+#[derive(Debug, Default)]
+pub(crate) struct DaemonConnection {
+    socket: Option<UnixStream>,
     #[allow(dead_code)]
-    server_features: Vec<Vec<u8>>,
+    server_features: Vec<String>,
     #[allow(dead_code)]
     daemon_version: String,
     #[allow(dead_code)]
@@ -167,14 +169,14 @@ impl TryFrom<u64> for OpCode {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ValidPathInfo {
-    pub deriver: Vec<u8>,
-    pub hash: Vec<u8>,
-    pub references: Vec<Vec<u8>>,
+    pub deriver: String,
+    pub hash: String,
+    pub references: Vec<String>,
     pub registration_time: u64, // In seconds, since the epoch
     pub nar_size: u64,
     pub ultimate: bool,
-    pub sigs: Vec<Vec<u8>>,
-    pub content_address: Vec<u8>, // Can be empty
+    pub sigs: Vec<String>,
+    pub content_address: Option<String>, // Can be empty
 }
 
 #[derive(Debug, PartialEq)]
@@ -225,10 +227,10 @@ impl TryFrom<u64> for Msg {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StderrError {
-    typ: Vec<u8>,
+    typ: String,
     level: u64,
-    name: Vec<u8>,
-    message: Vec<u8>,
+    name: String,
+    message: String,
     have_pos: u64,
     traces: Vec<Trace>,
 }
@@ -236,13 +238,13 @@ struct StderrError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Trace {
     have_pos: u64,
-    trace: Vec<u8>,
+    trace: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LoggerField {
     Int(u64),
-    String(Vec<u8>),
+    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -250,129 +252,287 @@ struct StderrStartActivity {
     act: u64,
     lvl: u64,
     typ: u64,
-    s: Vec<u8>,
+    s: String,
     fields: LoggerField,
     parent: u64,
 }
 
+async fn write_num<T: Into<u64>>(socket: &mut UnixStream, num: T) -> Result<()> {
+    let num = num.into();
+    socket
+        .write_all(&num.to_le_bytes())
+        .await
+        .context("Failed to write number")
+}
+
+async fn read_num<T: From<u64>>(socket: &mut UnixStream) -> Result<T> {
+    let mut buf = [0; 8];
+    socket
+        .read_exact(&mut buf)
+        .await
+        .context("Failed to read number")?;
+    Ok(T::from(u64::from_le_bytes(buf)))
+}
+
+async fn write_string(socket: &mut UnixStream, s: &str) -> Result<()> {
+    write_num::<u64>(socket, s.len() as u64).await?;
+    socket.write_all(s.as_bytes()).await?;
+    let padding = [0; 8];
+    let padding_size = (8 - s.len() % 8) % 8;
+    if padding_size > 0 {
+        socket.write_all(&padding[0..padding_size]).await?;
+    }
+    Ok(())
+}
+
+async fn read_string(socket: &mut UnixStream) -> Result<String> {
+    let len = read_num::<u64>(socket)
+        .await
+        .context("Failed to read string length")?;
+    let aligned_len = (len + 7) & !7; // Align to the next multiple of 8
+    let mut buf = vec![0; aligned_len as usize];
+    socket
+        .read_exact(&mut buf)
+        .await
+        .context("Failed to read string")?;
+    Ok(str::from_utf8(&buf[..len as usize])
+        .context("Failed to parse string")?
+        .to_owned())
+}
+
+async fn read_string_list(socket: &mut UnixStream) -> Result<Vec<String>> {
+    let len = read_num::<u64>(socket).await?;
+    let mut res = Vec::with_capacity(len as usize);
+    for _ in 0..len {
+        res.push(read_string(socket).await?);
+    }
+    Ok(res)
+}
+
+async fn write_string_list(socket: &mut UnixStream, list: &[String]) -> Result<()> {
+    write_num::<u64>(socket, list.len() as u64).await?;
+    for s in list {
+        write_string(socket, s).await?;
+    }
+    Ok(())
+}
+
+struct Handshake {
+    server_features: Vec<String>,
+    daemon_version: String,
+    is_trusted: bool,
+}
+
+async fn handshake(socket: &mut UnixStream) -> Result<Handshake> {
+    write_num(socket, WORKER_MAGIC_1)
+        .await
+        .context("Failed to write magic 1")?;
+    let magic = read_num::<u64>(socket)
+        .await
+        .context("Failed to read magic 2")?;
+    if magic != WORKER_MAGIC_2 {
+        bail!("Invalid magic number: {}", magic);
+    }
+    let protocol_version = read_num::<u64>(socket)
+        .await
+        .context("Failed to read protocol version")?;
+    if protocol_version < MINIMUM_PROTOCOL_VERSION.into() {
+        bail!("Protocol version mismatch: got {}", protocol_version);
+    }
+
+    write_num::<u64>(socket, CLIENT_VERSION.into())
+        .await
+        .context("Failed to write client version")?;
+    write_num(socket, 0u64)
+        .await
+        .context("Failed to cpu affinity flags")?; // cpu affinity, obsolete
+    write_num(socket, 0u64)
+        .await
+        .context("Failed to write flags")?; // reserve space, obsolete
+
+    /* Exchange features. */
+    let server_features = read_string_list(socket)
+        .await
+        .context("Failed to read daemon features")?;
+    write_string_list(socket, &[])
+        .await
+        .context("Failed to write supported features")?;
+
+    let daemon_version = read_string(socket)
+        .await
+        .context("Failed to read daemon version")?;
+
+    let is_trusted = read_num::<u64>(socket)
+        .await
+        .context("Failed to read is_trusted")?
+        == 1;
+
+    forward_stderr(socket).await?;
+
+    Ok(Handshake {
+        server_features,
+        daemon_version,
+        is_trusted,
+    })
+}
+
+async fn forward_stderr(socket: &mut UnixStream) -> Result<()> {
+    loop {
+        let msg_code = read_num::<u64>(socket).await?;
+        let msg = Msg::try_from(msg_code)?;
+        match msg {
+            Msg::Error => {
+                let mut err = StderrError {
+                    typ: read_string(socket).await.context("Failed to read type")?,
+                    level: read_num(socket).await.context("Failed to read level")?,
+                    name: read_string(socket).await.context("Failed to read name")?,
+                    message: read_string(socket)
+                        .await
+                        .context("Failed to read message")?,
+                    have_pos: read_num(socket).await.context("Failed to read have_pos")?,
+                    traces: Vec::new(),
+                };
+                let traces_len = read_num::<u64>(socket)
+                    .await
+                    .context("Failed to read traces_len")?;
+                for _ in 0..traces_len {
+                    err.traces.push(Trace {
+                        have_pos: read_num(socket).await.context("Failed to read have_pos")?,
+                        trace: read_string(socket).await.context("Failed to read trace")?,
+                    });
+                }
+                bail!("Daemon error: {}", err.message);
+            }
+            Msg::Next => {
+                let next = read_string(socket).await.context("Failed to read next")?;
+                eprintln!("[nix-daemon]: {}", next);
+            }
+            Msg::StartActivity => {
+                let act = read_num(socket).await.context("Failed to read act")?;
+                let lvl = read_num(socket).await.context("Failed to read lvl")?;
+                let typ = read_num(socket).await.context("Failed to read typ")?;
+                let s = read_string(socket).await.context("Failed to read s")?;
+                let fields = match read_num::<u64>(socket)
+                    .await
+                    .context("Failed to read fields")?
+                {
+                    0 => LoggerField::Int(read_num(socket).await.context("Failed to read int")?),
+                    1 => LoggerField::String(
+                        read_string(socket).await.context("Failed to read string")?,
+                    ),
+                    _ => bail!("Invalid field type"),
+                };
+                let parent = read_num(socket).await.context("Failed to read parent")?;
+                eprintln!(
+                    "[nix-daemon] start activity: {:?}",
+                    StderrStartActivity {
+                        act,
+                        lvl,
+                        typ,
+                        s,
+                        fields,
+                        parent,
+                    }
+                );
+            }
+            Msg::StopActivity => {
+                let act = read_num::<u64>(socket)
+                    .await
+                    .context("Failed to read act")?;
+                eprintln!("[nix-daemon] stop activity: {:?}", act);
+            }
+            Msg::Result => {
+                let res = read_string(socket).await.context("Failed to read result")?;
+                eprintln!("[nix-daemon] result: {:?}", res);
+            }
+            Msg::Write => {
+                let write = read_string(socket).await.context("Failed to read write")?;
+                eprintln!("[nix-daemon] write: {:?}", write);
+            }
+            Msg::Last => {
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
 impl DaemonConnection {
-    #[allow(dead_code)]
-    pub(crate) async fn new() -> Result<Self> {
-        let socket = UnixStream::connect(SOCKET_PATH)
-            .await
-            .with_context(|| format!("Failed to connect to {}", SOCKET_PATH))?;
-        Ok(Self {
-            socket,
-            server_features: Vec::new(),
-            daemon_version: String::new(),
-            is_trusted: false,
-        })
+    async fn connect(&mut self) -> Result<&mut UnixStream> {
+        if let Some(ref mut socket) = self.socket {
+            Ok(socket)
+        } else {
+            let mut socket = UnixStream::connect(SOCKET_PATH)
+                .await
+                .with_context(|| format!("Failed to reconnect to {}", SOCKET_PATH))?;
+            let data = handshake(&mut socket).await?;
+            self.socket = Some(socket);
+            self.server_features = data.server_features;
+            self.daemon_version = data.daemon_version;
+            self.is_trusted = data.is_trusted;
+            Ok(self.socket.as_mut().unwrap())
+        }
     }
 
     async fn write_num<T: Into<u64>>(&mut self, num: T) -> Result<()> {
-        let num = num.into();
-        self.socket.write_all(&num.to_le_bytes()).await?;
-        Ok(())
+        let socket = self.connect().await?;
+        match write_num(socket, num).await {
+            Err(e) => {
+                self.socket = None;
+                Err(e)
+            }
+            Ok(res) => Ok(res),
+        }
     }
 
-    async fn read_num<T: From<u64>>(&mut self) -> Result<T> {
-        let mut buf = [0; 8];
-        self.socket.read_exact(&mut buf).await?;
-        Ok(T::from(u64::from_le_bytes(buf)))
+    pub async fn read_num<T: From<u64>>(&mut self) -> Result<T> {
+        let socket = self.connect().await?;
+        match read_num(socket).await {
+            Err(e) => {
+                self.socket = None;
+                Err(e)
+            }
+            Ok(res) => Ok(res),
+        }
     }
 
-    async fn read_string(&mut self) -> Result<Vec<u8>> {
-        let len = self.read_num::<u64>().await?;
-        let aligned_len = (len + 7) & !7; // Align to the next multiple of 8
-        let mut buf = vec![0; aligned_len as usize];
-        self.socket.read_exact(&mut buf).await?;
-        Ok(buf[..len as usize].to_vec())
-    }
-
-    async fn write_string(&mut self, s: &[u8]) -> Result<()> {
-        self.write_num::<u64>(s.len() as u64).await?;
-        self.socket.write_all(s).await?;
-        // Calculate padding size to align to 8 bytes
-        let padding = [0; 8];
-        let padding_size = (8 - s.len() % 8) % 8;
-        if padding_size > 0 {
-            self.socket.write_all(&padding[0..padding_size]).await?;
+    async fn write_string(&mut self, s: &str) -> Result<()> {
+        let socket = self.connect().await?;
+        if let Err(e) = write_string(socket, s).await {
+            self.socket = None;
+            return Err(e);
         }
         Ok(())
     }
 
-    async fn read_string_list(&mut self) -> Result<Vec<Vec<u8>>> {
-        let len = self.read_num::<u64>().await?;
-        let mut res = Vec::with_capacity(len as usize);
-        for _ in 0..len {
-            res.push(self.read_string().await?);
+    async fn read_string(&mut self) -> Result<String> {
+        let socket = self.connect().await?;
+        match read_string(socket).await {
+            Err(e) => {
+                self.socket = None;
+                Err(e)
+            }
+            Ok(res) => Ok(res),
         }
-        Ok(res)
     }
 
-    async fn write_string_list(&mut self, list: &[Vec<u8>]) -> Result<()> {
-        self.write_num::<u64>(list.len() as u64).await?;
-        for s in list {
-            self.write_string(s).await?;
+    async fn read_string_list(&mut self) -> Result<Vec<String>> {
+        let socket = self.connect().await?;
+        match read_string_list(socket).await {
+            Err(e) => {
+                self.socket = None;
+                Err(e)
+            }
+            Ok(res) => Ok(res),
         }
-        Ok(())
     }
 
-    #[allow(dead_code)]
-    pub(crate) async fn handshake(&mut self) -> Result<()> {
-        self.write_num(WORKER_MAGIC_1)
-            .await
-            .context("Failed to write magic 1")?;
-        let magic = self
-            .read_num::<u64>()
-            .await
-            .context("Failed to read magic 2")?;
-        if magic != WORKER_MAGIC_2 {
-            bail!("Invalid magic number: {}", magic);
+    pub async fn forward_stderr(&mut self) -> Result<()> {
+        let socket = self.connect().await?;
+        if let Err(e) = forward_stderr(socket).await {
+            self.socket = None;
+            return Err(e);
         }
-        let protocol_version = self
-            .read_num::<u64>()
-            .await
-            .context("Failed to read protocol version")?;
-        if protocol_version < MINIMUM_PROTOCOL_VERSION.into() {
-            bail!("Protocol version mismatch: got {}", protocol_version);
-        }
-
-        self.write_num::<u64>(CLIENT_VERSION.into())
-            .await
-            .context("Failed to write client version")?;
-        self.write_num(0u64)
-            .await
-            .context("Failed to cpu affinity flags")?; // cpu affinity, obsolete
-        self.write_num(0u64)
-            .await
-            .context("Failed to write flags")?; // reserve space, obsolete
-
-        /* Exchange features. */
-        self.server_features = self
-            .read_string_list()
-            .await
-            .context("Failed to read daemon features")?;
-        self.write_string_list(&[])
-            .await
-            .context("Failed to write supported features")?;
-
-        let daemon_version = self
-            .read_string()
-            .await
-            .context("Failed to read daemon version")?;
-
-        self.daemon_version = String::from_utf8(daemon_version.clone())
-            .context("Failed to parse daemon version: {:?}")?;
-
-        self.is_trusted = self
-            .read_num::<u64>()
-            .await
-            .context("Failed to read is_trusted")?
-            == 1;
-
-        self.forward_stderr().await?;
-
         Ok(())
     }
 
@@ -387,87 +547,8 @@ impl DaemonConnection {
         OpCode::try_from(op).context("Invalid opcode")
     }
 
-    async fn forward_stderr(&mut self) -> Result<()> {
-        loop {
-            let msg_code = self.read_num::<u64>().await?;
-            let msg = Msg::try_from(msg_code)?;
-            match msg {
-                Msg::Error => {
-                    let mut err = StderrError {
-                        typ: self.read_string().await.context("Failed to read type")?,
-                        level: self.read_num().await.context("Failed to read level")?,
-                        name: self.read_string().await.context("Failed to read name")?,
-                        message: self.read_string().await.context("Failed to read message")?,
-                        have_pos: self.read_num().await.context("Failed to read have_pos")?,
-                        traces: Vec::new(),
-                    };
-                    let traces_len = self
-                        .read_num::<u64>()
-                        .await
-                        .context("Failed to read traces_len")?;
-                    for _ in 0..traces_len {
-                        err.traces.push(Trace {
-                            have_pos: self.read_num().await.context("Failed to read have_pos")?,
-                            trace: self.read_string().await.context("Failed to read trace")?,
-                        });
-                    }
-                    bail!("Daemon error: {}", String::from_utf8_lossy(&err.message));
-                }
-                Msg::Next => {
-                    let next = self.read_string().await.context("Failed to read next")?;
-                    eprintln!("[nix-daemon]: {:?}", String::from_utf8_lossy(&next));
-                }
-                Msg::StartActivity => {
-                    let act = self.read_num().await.context("Failed to read act")?;
-                    let lvl = self.read_num().await.context("Failed to read lvl")?;
-                    let typ = self.read_num().await.context("Failed to read typ")?;
-                    let s = self.read_string().await.context("Failed to read s")?;
-                    let fields = match self
-                        .read_num::<u64>()
-                        .await
-                        .context("Failed to read fields")?
-                    {
-                        0 => LoggerField::Int(self.read_num().await.context("Failed to read int")?),
-                        1 => LoggerField::String(
-                            self.read_string().await.context("Failed to read string")?,
-                        ),
-                        _ => bail!("Invalid field type"),
-                    };
-                    let parent = self.read_num().await.context("Failed to read parent")?;
-                    eprintln!(
-                        "[nix-daemon] start activity: {:?}",
-                        StderrStartActivity {
-                            act,
-                            lvl,
-                            typ,
-                            s,
-                            fields,
-                            parent,
-                        }
-                    );
-                }
-                Msg::StopActivity => {
-                    let act = self.read_num::<u64>().await.context("Failed to read act")?;
-                    eprintln!("[nix-daemon] stop activity: {:?}", act);
-                }
-                Msg::Result => {
-                    let res = self.read_string().await.context("Failed to read result")?;
-                    eprintln!("[nix-daemon] result: {:?}", res);
-                }
-                Msg::Write => {
-                    let write = self.read_string().await.context("Failed to read write")?;
-                    eprintln!("[nix-daemon] write: {:?}", write);
-                }
-                Msg::Last => {
-                    break;
-                }
-            }
-        }
-        Ok(())
-    }
-
     #[allow(dead_code)]
-    pub(crate) async fn is_valid_path(&mut self, path: &[u8]) -> Result<bool> {
+    pub(crate) async fn is_valid_path(&mut self, path: &str) -> Result<bool> {
         self.send_op(OpCode::IsValidPath)
             .await
             .context("Failed to send opcode")?;
@@ -486,7 +567,10 @@ impl DaemonConnection {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn query_path_from_hash_part(&mut self, hash_part: &[u8]) -> Result<Vec<u8>> {
+    pub(crate) async fn query_path_from_hash_part(
+        &mut self,
+        hash_part: &str,
+    ) -> Result<Option<String>> {
         self.send_op(OpCode::QueryPathFromHashPart)
             .await
             .context("Failed to send opcode")?;
@@ -497,11 +581,20 @@ impl DaemonConnection {
             .await
             .context("Failed to forward stderr")?;
 
-        self.read_string().await
+        match self.read_string().await {
+            Ok(resp) => {
+                if resp.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(resp))
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn query_path_info(&mut self, path: &[u8]) -> Result<QueryPathInfoResponse> {
+    pub(crate) async fn query_path_info(&mut self, path: &str) -> Result<QueryPathInfoResponse> {
         self.send_op(OpCode::QueryPathInfo)
             .await
             .context("Failed to send opcode")?;
@@ -520,7 +613,7 @@ impl DaemonConnection {
         if optional == 0 {
             return Ok(QueryPathInfoResponse { path: None });
         }
-        let path_info = ValidPathInfo {
+        let mut path_info = ValidPathInfo {
             deriver: self.read_string().await.context("Failed to read deriver")?,
             hash: self.read_string().await.context("Failed to read hash")?,
             references: self
@@ -541,13 +634,16 @@ impl DaemonConnection {
                 .read_string_list()
                 .await
                 .context("Failed to read sigs")?,
-            content_address: self
-                .read_string()
-                .await
-                .context("Failed to read content address")?,
+            content_address: Some(
+                self.read_string()
+                    .await
+                    .context("Failed to read content address")?,
+            ),
         };
+        if path_info.content_address.as_ref().unwrap().is_empty() {
+            path_info.content_address = None;
+        }
 
-        //self.write_string(path).await?;
         Ok(QueryPathInfoResponse {
             path: Some(path_info),
         })
@@ -557,8 +653,6 @@ impl DaemonConnection {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::ffi::OsStr;
-    use std::os::unix::ffi::OsStrExt;
     use std::path::Path;
     use std::process::Command;
 
@@ -567,38 +661,7 @@ mod test {
         if !Path::new(SOCKET_PATH).exists() {
             return Ok(());
         }
-        let mut conn = DaemonConnection::new()
-            .await
-            .context("Failed to create daemon connection")
-            .unwrap();
-
-        conn.handshake()
-            .await
-            .context("Failed to handshake")
-            .unwrap();
-
-        assert!(!conn
-            .is_valid_path(b"/nix/store/s5lqjivysl2s674wwbishk638hkw8jqp-nixos-vm")
-            .await
-            .context("Failed to check path")
-            .unwrap());
-
-        assert!(conn
-            .query_path_info(b"/nix/store/s5lqjivysl2s674wwbishk638hkw8jqp-nixos-vm")
-            .await
-            .context("Failed to get path info")
-            .unwrap()
-            .path
-            .is_none());
-
-        assert_eq!(
-            conn.query_path_from_hash_part(b"s5lqjivysl2s674wwbishk638hkw8jqp")
-                .await
-                .context("Failed to get path info")
-                .unwrap()
-                .len(),
-            0
-        );
+        let mut conn: DaemonConnection = Default::default();
 
         // add to store
         let temp_dir = tempfile::tempdir().context("Failed to create temp dir")?;
@@ -610,19 +673,20 @@ mod test {
             .arg(&temp_path)
             .output()
             .context("Failed to add to store")?;
-        eprintln!("stderr: {:?}", String::from_utf8_lossy(&store_path.stderr));
-        let store_path = Path::new(OsStr::from_bytes(
-            &store_path.stdout[..store_path.stdout.len() - 1],
-        ));
+        eprintln!("stderr: {:?}", &String::from_utf8_lossy(&store_path.stderr));
+        let store_path = str::from_utf8(&store_path.stdout)
+            .context("Failed to parse store path")?
+            .trim()
+            .to_owned();
 
         assert!(conn
-            .is_valid_path(store_path.as_os_str().as_bytes())
+            .is_valid_path(&store_path)
             .await
             .context("Failed to check path")
             .unwrap());
 
         let path_info = conn
-            .query_path_info(store_path.as_os_str().as_bytes())
+            .query_path_info(&store_path)
             .await
             .context("Failed to check path")
             .unwrap()
@@ -632,20 +696,18 @@ mod test {
         assert!(!path_info.ultimate);
         assert!(path_info.nar_size > 0, "nar size: {}", path_info.nar_size);
 
-        let hash_part = store_path
+        let hash_part = &store_path
             .strip_prefix("/nix/store/")
             .context("cannot strip prefix")
-            .unwrap()
-            .as_os_str()
-            .as_bytes()[..32]
-            .to_vec();
+            .unwrap()[..32];
 
         let res = conn
-            .query_path_from_hash_part(&hash_part)
+            .query_path_from_hash_part(hash_part)
             .await
             .context("Failed to get path info")
+            .unwrap()
             .unwrap();
-        assert_eq!(res, store_path.as_os_str().as_bytes());
+        assert_eq!(res, store_path);
 
         Ok(())
     }

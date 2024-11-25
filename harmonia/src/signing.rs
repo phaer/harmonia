@@ -66,7 +66,7 @@ fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Vec<u8>> {
         .collect()
 }
 
-fn convert_base16_to_nix32(hash_str: &str) -> Result<String> {
+pub(crate) fn convert_base16_to_nix32(hash_str: &str) -> Result<String> {
     let bytes =
         from_hex(hash_str).with_context(|| format!("Failed to convert hash: {}", hash_str))?;
     Ok(to_nix_base32(&bytes))
@@ -106,14 +106,8 @@ pub(crate) fn fingerprint_path(
     if store_path[0..root_store_dir.len()] != root_store_dir {
         bail!("store path does not start with store dir");
     }
-    if &nar_hash[0..7] != "sha256:" {
-        bail!("nar hash does not start with sha256:");
-    }
 
-    let mut nar_hash = nar_hash.to_owned();
-    if nar_hash.len() == 71 {
-        nar_hash = format!("sha256:{}", convert_base16_to_nix32(&nar_hash[7..])?);
-    }
+    assert!(nar_hash.starts_with("sha256:"));
 
     if nar_hash.len() != 59 {
         bail!(

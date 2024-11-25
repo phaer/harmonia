@@ -3,6 +3,7 @@
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+use config::Config;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -26,11 +27,18 @@ mod signing;
 mod store;
 mod version;
 
-fn nixhash(hash: &str) -> Option<String> {
+async fn nixhash(settings: &web::Data<Config>, hash: &str) -> Option<String> {
     if hash.len() != 32 {
         return None;
     }
-    libnixstore::query_path_from_hash_part(hash)
+    settings
+        .store
+        .daemon
+        .lock()
+        .await
+        .query_path_from_hash_part(hash)
+        .await
+        .unwrap_or(None)
 }
 
 const BOOTSTRAP_SOURCE: &str = r#"
