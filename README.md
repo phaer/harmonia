@@ -90,6 +90,13 @@ workers = 4
 max_connection_rate = 256
 # binary cache priority that is advertised in /nix-cache-info
 priority = 30
+
+# Allow to override the store path advertised in /nix-cache-info
+# virtual_nix_store = "/nix/store"
+# Allow to serve the nix store from a different physical location
+# Default: empty
+# Example: if you use `nix copy --store /guest` to populate a store than configure:
+# real_nix_store = "/guest/nix/store"
 ```
 
 Per default we wont sign any narinfo because we don't have a secret key, to

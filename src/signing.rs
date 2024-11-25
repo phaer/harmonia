@@ -94,16 +94,16 @@ pub(crate) fn parse_secret_key(path: &Path) -> Result<SigningKey> {
 }
 
 pub(crate) fn fingerprint_path(
+    virtual_nix_store: &str,
     store_path: &str,
     nar_hash: &str,
     nar_size: u64,
     refs: &[String],
 ) -> Result<Option<String>> {
-    let root_store_dir = libnixstore::get_store_dir();
-    if store_path.len() < root_store_dir.len() {
+    if store_path.len() < virtual_nix_store.len() {
         bail!("store path too short");
     }
-    if store_path[0..root_store_dir.len()] != root_store_dir {
+    if &store_path[0..virtual_nix_store.len()] != virtual_nix_store {
         bail!("store path does not start with store dir");
     }
 
@@ -117,7 +117,7 @@ pub(crate) fn fingerprint_path(
     }
 
     for r in refs {
-        if r[0..root_store_dir.len()] != root_store_dir {
+        if &r[0..virtual_nix_store.len()] != virtual_nix_store {
             bail!("ref path invalid");
         }
     }
@@ -172,6 +172,7 @@ mod test {
         let key = parse_secret_key(&sign_key)
             .with_context(|| format!("Could not parse signing key: {}", sign_key.display()))?;
         let finger_print = fingerprint_path(
+            "/nix/store",
             "/nix/store/26xbg1ndr7hbcncrlf9nhx5is2b25d13-hello-2.12.1",
             "sha256:1mkvday29m2qxg1fnbv8xh9s6151bh8a2xzhh0k86j7lqhyfwibh",
             226560,

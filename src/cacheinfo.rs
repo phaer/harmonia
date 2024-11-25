@@ -8,7 +8,7 @@ pub(crate) async fn get(config: web::Data<config::Config>) -> Result<HttpRespons
         .insert_header((http::header::CONTENT_TYPE, "text/x-nix-cache-info"))
         .body(
             [
-                format!("StoreDir: {}", libnixstore::get_store_dir()),
+                format!("StoreDir: {}", config.store.virtual_store()),
                 "WantMassQuery: 1".to_owned(),
                 format!("Priority: {}", config.priority),
                 "".to_owned(),

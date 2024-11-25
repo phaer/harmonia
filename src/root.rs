@@ -50,7 +50,7 @@ pub(crate) async fn get(config: web::Data<config::Config>) -> Result<HttpRespons
 </body>
 </html>
 "#,
-            store = libnixstore::get_store_dir(),
+            store = config.store.virtual_store(),
             priority = config.priority,
         )))
 }

@@ -10,6 +10,7 @@
           imports = [ ../module.nix ];
 
           services.harmonia-dev.enable = true;
+          services.harmonia-dev.settings.real_nix_store = "/guest/nix/store";
           # We need to manipulate the target store first
           systemd.services."harmonia-dev".wantedBy = pkgs.lib.mkForce [ ];
 
@@ -39,6 +40,7 @@
       harmonia.wait_until_succeeds("mkdir /my-dir && cp /my-file /my-dir/")
       f = harmonia.wait_until_succeeds("nix store --store /guest add-file /my-file")
       d = harmonia.wait_until_succeeds("nix store --store /guest add-path /my-dir")
+      harmonia.succeed("ls -la /guest/ >&2")
       harmonia.systemctl("start harmonia-dev.service")
       harmonia.wait_for_unit("harmonia-dev.service")
 

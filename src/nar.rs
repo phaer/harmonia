@@ -503,7 +503,7 @@ mod test {
     use std::process::Command;
 
     async fn dump_to_vec(path: String) -> Result<Vec<u8>> {
-        let store = Store::new();
+        let store = Store::new("/nix/store".to_string(), None);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<Bytes, ThreadSafeError>>(1000);
         task::spawn(async move {
             let e = dump_path(store.get_real_path(&PathBuf::from(&path)), &tx).await;
