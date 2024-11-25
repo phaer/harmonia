@@ -2,8 +2,6 @@
   pkgs ?
     (builtins.getFlake (builtins.toString ./.)).inputs.nixpkgs.legacyPackages.${builtins.currentSystem},
   rustPlatform ? pkgs.rustPlatform,
-  nixVersions ? pkgs.nixVersions,
-  nixForHarmonia ? nixVersions.latest,
   nix-gitignore ? pkgs.nix-gitignore,
   lib ? pkgs.lib,
   clippy ? pkgs.clippy,
@@ -31,17 +29,11 @@ rustPlatform.buildRustPackage (
     cargoLock.lockFile = ./Cargo.lock;
 
     nativeBuildInputs = [ pkg-config ] ++ lib.optionals enableClippy [ clippy ];
-    buildInputs = [
-      nixForHarmonia
-      nlohmann_json
-      libsodium
-      boost
-      openssl
-    ];
+    buildInputs = [ libsodium openssl ];
     doCheck = false;
 
     meta = with lib; {
-      description = "Nix binary cache implemented in rust using libnix-store";
+      description = "Nix binary cache implemented in rust";
       homepage = "https://github.com/nix-community/harmonia";
       license = with licenses; [ mit ];
       maintainers = [ maintainers.conni2461 ];

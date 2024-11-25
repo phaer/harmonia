@@ -136,7 +136,7 @@ pub(crate) async fn get(
     let dir = dir.strip_prefix("/").unwrap_or(&dir);
 
     let store_path = settings.store.get_real_path(&PathBuf::from(&some_or_404!(
-        nixhash(&settings, &hash).await
+        nixhash(&settings, &hash).await?
     )));
     let full_path = if dir == Path::new("") {
         store_path.clone()

@@ -45,7 +45,7 @@ impl From<ProtocolVersion> for u64 {
 
 const MINIMUM_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion {
     major: 1,
-    minor: 38,
+    minor: 21,
 };
 
 const CLIENT_VERSION: ProtocolVersion = ProtocolVersion {
@@ -271,7 +271,7 @@ async fn read_num<T: From<u64>>(socket: &mut UnixStream) -> Result<T> {
         .read_exact(&mut buf)
         .await
         .context("Failed to read number")?;
-    Ok(T::from(u64::from_le_bytes(buf)))
+    Ok(T::from(dbg!(u64::from_le_bytes(buf))))
 }
 
 async fn write_string(socket: &mut UnixStream, s: &str) -> Result<()> {
@@ -351,12 +351,12 @@ async fn handshake(socket: &mut UnixStream) -> Result<Handshake> {
         .context("Failed to write flags")?; // reserve space, obsolete
 
     /* Exchange features. */
-    let server_features = read_string_list(socket)
-        .await
-        .context("Failed to read daemon features")?;
-    write_string_list(socket, &[])
-        .await
-        .context("Failed to write supported features")?;
+    //let server_features = read_string_list(socket)
+    //    .await
+    //    .context("Failed to read daemon features")?;
+    //write_string_list(socket, &[])
+    //    .await
+    //    .context("Failed to write supported features")?;
 
     let daemon_version = read_string(socket)
         .await
@@ -370,7 +370,8 @@ async fn handshake(socket: &mut UnixStream) -> Result<Handshake> {
     forward_stderr(socket).await?;
 
     Ok(Handshake {
-        server_features,
+        //server_features,
+        server_features: vec![],
         daemon_version,
         is_trusted,
     })
@@ -581,7 +582,7 @@ impl DaemonConnection {
             .await
             .context("Failed to forward stderr")?;
 
-        match self.read_string().await {
+        match dbg!(self.read_string().await) {
             Ok(resp) => {
                 if resp.is_empty() {
                     Ok(None)

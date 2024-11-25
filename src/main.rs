@@ -28,18 +28,18 @@ mod signing;
 mod store;
 mod version;
 
-async fn nixhash(settings: &web::Data<Config>, hash: &str) -> Option<String> {
+async fn nixhash(settings: &web::Data<Config>, hash: &str) -> Result<Option<String>> {
     if hash.len() != 32 {
-        return None;
+        bail!("Hash is too short");
     }
-    settings
+    Ok(settings
         .store
         .daemon
         .lock()
         .await
         .query_path_from_hash_part(hash)
         .await
-        .unwrap_or(None)
+        .context("Failed to query path")?)
 }
 
 const BOOTSTRAP_SOURCE: &str = r#"

@@ -6,7 +6,6 @@
   lib ? pkgs.lib,
   libiconv ? pkgs.libiconv,
   libsodium ? pkgs.libsodium,
-  nixVersions ? pkgs.nixVersions,
   nlohmann_json ? pkgs.nlohmann_json,
   openssl ? pkgs.openssl,
   rust-analyzer ? pkgs.rust-analyzer,
@@ -23,7 +22,6 @@ pkgs.mkShell {
     pkg-config
   ];
   buildInputs = [
-    nixVersions.latest
     nlohmann_json
     libsodium
     boost
