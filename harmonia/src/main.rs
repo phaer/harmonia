@@ -1,5 +1,6 @@
 #![warn(clippy::dbg_macro)]
 
+use actix_web::middleware;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
@@ -121,6 +122,7 @@ async fn inner_main() -> Result<()> {
     log::info!("listening on {}", c.bind);
     let mut server = HttpServer::new(move || {
         App::new()
+            .wrap(middleware::Compress::default())
             .app_data(config_data.clone())
             .route("/", web::get().to(root::get))
             .route("/{hash}.ls", web::get().to(narlist::get))
