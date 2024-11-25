@@ -35,6 +35,7 @@ fn extract_filename(path: &str) -> Option<String> {
 }
 
 async fn query_narinfo(
+    virtual_nix_store: &str,
     store_path: &str,
     hash: &str,
     sign_keys: &Vec<SigningKey>,
@@ -81,7 +82,13 @@ async fn query_narinfo(
             .collect::<Vec<String>>();
     }
 
-    let fingerprint = fingerprint_path(store_path, &res.nar_hash, res.nar_size, &refs)?;
+    let fingerprint = fingerprint_path(
+        virtual_nix_store,
+        store_path,
+        &res.nar_hash,
+        res.nar_size,
+        &refs,
+    )?;
     for sk in sign_keys {
         if let Some(ref fp) = fingerprint {
             res.sigs.push(sign_string(sk, fp));
@@ -133,7 +140,15 @@ pub(crate) async fn get(
 ) -> Result<HttpResponse, Box<dyn Error>> {
     let hash = hash.into_inner();
     let store_path = some_or_404!(nixhash(&settings, &hash).await);
-    let narinfo = match query_narinfo(&store_path, &hash, &settings.secret_keys, &settings).await? {
+    let narinfo = match query_narinfo(
+        &settings.store.virtual_store(),
+        &store_path,
+        &hash,
+        &settings.secret_keys,
+        &settings,
+    )
+    .await?
+    {
         Some(narinfo) => narinfo,
         None => {
             return Ok(HttpResponse::NotFound()

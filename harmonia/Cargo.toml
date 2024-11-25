@@ -35,7 +35,5 @@ async-compression = { version = "0.4.17", features = ["tokio", "bzip2"] }
 tokio-util = "0.7.12"
 
 
-libnixstore = { path = "../libnixstore" }
-
 [build-dependencies]
 pkg-config = "0.3"

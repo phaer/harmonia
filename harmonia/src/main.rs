@@ -114,7 +114,6 @@ type ServerResult = Result<HttpResponse, ServerError>;
 
 async fn inner_main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    libnixstore::init();
 
     let c = web::Data::new(config::load().with_context(|| "Failed to load configuration")?);
     let config_data = c.clone();

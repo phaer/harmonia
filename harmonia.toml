@@ -1,0 +1,2 @@
+# default ip:hostname to bind to
+bind = "unix:foo"
