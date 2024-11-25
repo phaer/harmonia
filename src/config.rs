@@ -3,7 +3,7 @@ use crate::store::Store;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs::read_to_string;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn default_bind() -> String {
     "[::]:5000".into()
@@ -32,7 +32,7 @@ pub(crate) struct SigningKey {
 }
 
 // TODO(conni2461): users to restrict access
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub(crate) struct Config {
     #[serde(default = "default_bind")]
     pub(crate) bind: String,
@@ -65,11 +65,17 @@ pub(crate) struct Config {
 
 pub(crate) fn load() -> Result<Config> {
     let settings_file = std::env::var("CONFIG_FILE").unwrap_or_else(|_| "settings.toml".to_owned());
-    let mut settings: Config = toml::from_str(
-        &read_to_string(&settings_file)
-            .with_context(|| format!("Couldn't read config file '{settings_file}'"))?,
-    )
-    .with_context(|| format!("Couldn't parse config file '{settings_file}'"))?;
+
+    let mut settings: Config = if Path::new(&settings_file).exists() {
+        toml::from_str(
+            &read_to_string(&settings_file)
+                .with_context(|| format!("Couldn't read config file '{settings_file}'"))?,
+        )
+        .with_context(|| format!("Couldn't parse config file '{settings_file}'"))?
+    } else {
+        Config::default()
+    };
+
     if let Some(sign_key_path) = &settings.sign_key_path {
         log::warn!(
             "The sign_key_path configuration option is deprecated. Use sign_key_paths instead."

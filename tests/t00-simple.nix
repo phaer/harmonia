@@ -6,6 +6,11 @@
       echo file > $out/dir/file
       ln -s /etc/passwd $out/forbidden-symlink
       ln -s $out/dir/file $out/allowed-symlink
+
+      # check unicode
+      echo test > "$out/🦄"
+      # check invalid utf-8
+      touch $(echo -e "test\x80")
     '';
   in
   {
@@ -56,6 +61,9 @@
         assert data["root"]["entries"]["bin"]["type"] == "directory", "expect bin directory in listing"
         client01.succeed("${pkgs.hello}/bin/hello")
 
+        # test unicode
+        client01.succeed("nix copy --from http://harmonia:5000/ ${testServe}")
+
         print("download ${testServe}")
         out = client01.wait_until_succeeds("curl -v http://harmonia:5000/serve/${hashPart testServe}/")
         print(out)
@@ -68,6 +76,15 @@
         out = client01.wait_until_succeeds("curl -v http://harmonia:5000/serve/${hashPart testServe}/dir/file").strip()
         print(out)
         assert "file" == out, f"expected 'file', got '{out}'"
+
+        out = client01.wait_until_succeeds("curl -v http://harmonia:5000/serve/${hashPart testServe}/🦄").strip()
+        print(out)
+        assert "test" == out, f"expected 'test', got '{out}'"
+
+        # TODO: this is still broken
+        #out = client01.wait_until_succeeds("curl -v http://harmonia:5000/serve/${hashPart testServe}/test\\x80").strip()
+        #print(out)
+        #assert "test" == out, f"expected 'test', got '{out}'"
       '';
   }
 )
