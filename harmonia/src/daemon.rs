@@ -457,21 +457,10 @@ async fn forward_stderr(socket: &mut UnixStream) -> Result<()> {
     Ok(())
 }
 
-impl Default for DaemonConnection {
-    fn default() -> Self {
-        Self {
-            socket: None,
-            server_features: Vec::new(),
-            daemon_version: String::new(),
-            is_trusted: false,
-        }
-    }
-}
-
 impl DaemonConnection {
     async fn connect(&mut self) -> Result<&mut UnixStream> {
         if let Some(ref mut socket) = self.socket {
-            return Ok(socket);
+            Ok(socket)
         } else {
             let mut socket = UnixStream::connect(SOCKET_PATH)
                 .await
@@ -490,7 +479,7 @@ impl DaemonConnection {
         match write_num(socket, num).await {
             Err(e) => {
                 self.socket = None;
-                return Err(e.into());
+                Err(e)
             }
             Ok(res) => Ok(res),
         }
@@ -501,7 +490,7 @@ impl DaemonConnection {
         match read_num(socket).await {
             Err(e) => {
                 self.socket = None;
-                Err(e.into())
+                Err(e)
             }
             Ok(res) => Ok(res),
         }
@@ -511,7 +500,7 @@ impl DaemonConnection {
         let socket = self.connect().await?;
         if let Err(e) = write_string(socket, s).await {
             self.socket = None;
-            return Err(e.into());
+            return Err(e);
         }
         Ok(())
     }
@@ -521,7 +510,7 @@ impl DaemonConnection {
         match read_string(socket).await {
             Err(e) => {
                 self.socket = None;
-                Err(e.into())
+                Err(e)
             }
             Ok(res) => Ok(res),
         }
@@ -532,7 +521,7 @@ impl DaemonConnection {
         match read_string_list(socket).await {
             Err(e) => {
                 self.socket = None;
-                Err(e.into())
+                Err(e)
             }
             Ok(res) => Ok(res),
         }
@@ -542,7 +531,7 @@ impl DaemonConnection {
         let socket = self.connect().await?;
         if let Err(e) = forward_stderr(socket).await {
             self.socket = None;
-            return Err(e.into());
+            return Err(e);
         }
         Ok(())
     }
