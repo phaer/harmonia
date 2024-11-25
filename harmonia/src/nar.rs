@@ -5,8 +5,6 @@ use std::mem::size_of;
 use actix_web::web::Bytes;
 use actix_web::{http, web, HttpRequest, HttpResponse};
 use anyhow::{bail, Context, Result};
-use base64::prelude::BASE64_STANDARD;
-use base64::Engine;
 use serde::Deserialize;
 use std::fs::{self, Metadata};
 use std::os::unix::ffi::OsStrExt;
@@ -346,8 +344,9 @@ pub(crate) async fn get(
         Some(outhash) => settings
             .store
             .daemon
-            .lock().await
-            .query_path_from_hash_part(outhash.as_bytes())
+            .lock()
+            .await
+            .query_path_from_hash_part(outhash)
             .await
             .context("failed to query path from hash part")?,
         None => {
@@ -369,9 +368,9 @@ pub(crate) async fn get(
     let info = match settings
         .store
         .daemon
-        .lock().await
         .lock()
         .await
+        .query_path_info(&store_path)
         .await?
         .path
     {
@@ -383,15 +382,7 @@ pub(crate) async fn get(
         }
     };
 
-    let info_hash = match String::from_utf8(info.hash) {
-        Ok(info_hash) => info_hash,
-        Err(_) => {
-            return Ok(HttpResponse::InternalServerError()
-                .insert_header(crate::cache_control_no_store())
-                .body("received hash from nix daemon is not valid utf-8"));
-        }
-    };
-    let info_hash_nix32 = match convert_base16_to_nix32(&info_hash) {
+    let info_hash_nix32 = match convert_base16_to_nix32(&info.hash) {
         Ok(info_hash_nix32) => info_hash_nix32,
         Err(_) => {
             return Ok(HttpResponse::InternalServerError()
@@ -405,7 +396,7 @@ pub(crate) async fn get(
             .body("hash mismatch detected"));
     }
 
-    let store_path = PathBuf::from(OsStr::from_bytes(&store_path));
+    let store_path = PathBuf::from(store_path);
 
     let mut rlength = info.nar_size;
     let offset;

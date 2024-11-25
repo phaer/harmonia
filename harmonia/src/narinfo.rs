@@ -1,11 +1,12 @@
 use std::{error::Error, path::Path};
 
 use actix_web::{http, web, HttpResponse};
+use anyhow::Context;
 use anyhow::Result;
-use libnixstore::Radix;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{Config, SigningKey};
+use crate::signing::convert_base16_to_nix32;
 use crate::signing::{fingerprint_path, sign_string};
 use crate::{cache_control_max_age_1d, nixhash, some_or_404};
 
@@ -23,7 +24,6 @@ struct NarInfo {
     nar_size: u64,
     references: Vec<String>,
     deriver: Option<String>,
-    system: Option<String>,
     sigs: Vec<String>,
     ca: Option<String>,
 }
@@ -34,33 +34,48 @@ fn extract_filename(path: &str) -> Option<String> {
         .and_then(|v| v.to_str().map(ToOwned::to_owned))
 }
 
-fn query_narinfo(
+async fn query_narinfo(
     store_path: &str,
     hash: &str,
     sign_keys: &Vec<SigningKey>,
-) -> Result<NarInfo, Box<dyn Error>> {
-    let path_info = libnixstore::query_path_info(store_path, Radix::default())?;
+    settings: &web::Data<Config>,
+) -> Result<Option<NarInfo>> {
+    let path_info = match settings
+        .store
+        .daemon
+        .lock()
+        .await
+        .query_path_info(store_path)
+        .await?
+        .path
+    {
+        Some(info) => info,
+        None => {
+            return Ok(None);
+        }
+    };
+    let nar_hash =
+        convert_base16_to_nix32(&path_info.hash).context("failed to convert path info hash")?;
     let mut res = NarInfo {
         store_path: store_path.into(),
-        url: format!(
-            "nar/{}.nar?hash={}",
-            path_info.narhash.split_once(':').map_or(hash, |x| x.1),
-            hash
-        ),
+        url: format!("nar/{}.nar?hash={}", nar_hash, hash),
         compression: "none".into(),
-        nar_hash: path_info.narhash,
-        nar_size: path_info.size,
+        nar_hash: format!("sha256:{}", nar_hash),
+        nar_size: path_info.nar_size,
         references: vec![],
-        deriver: None,
-        system: None,
+        deriver: if path_info.deriver.is_empty() {
+            None
+        } else {
+            Some(path_info.deriver.clone())
+        },
         sigs: vec![],
-        ca: path_info.ca,
+        ca: path_info.content_address,
     };
 
-    let refs = path_info.refs.clone();
-    if !path_info.refs.is_empty() {
+    let refs = path_info.references.clone();
+    if !path_info.references.is_empty() {
         res.references = path_info
-            .refs
+            .references
             .into_iter()
             .filter_map(|r| extract_filename(&r))
             .collect::<Vec<String>>();
@@ -77,7 +92,7 @@ fn query_narinfo(
         res.sigs.clone_from(&path_info.sigs);
     }
 
-    Ok(res)
+    Ok(Some(res))
 }
 
 fn format_narinfo_txt(narinfo: &NarInfo) -> String {
@@ -117,8 +132,15 @@ pub(crate) async fn get(
     settings: web::Data<Config>,
 ) -> Result<HttpResponse, Box<dyn Error>> {
     let hash = hash.into_inner();
-    let store_path = some_or_404!(nixhash(&hash));
-    let narinfo = query_narinfo(&store_path, &hash, &settings.secret_keys)?;
+    let store_path = some_or_404!(nixhash(&settings, &hash).await);
+    let narinfo = match query_narinfo(&store_path, &hash, &settings.secret_keys, &settings).await? {
+        Some(narinfo) => narinfo,
+        None => {
+            return Ok(HttpResponse::NotFound()
+                .insert_header(cache_control_max_age_1d())
+                .body("missed hash"))
+        }
+    };
 
     if param.json.is_some() {
         Ok(HttpResponse::Ok()

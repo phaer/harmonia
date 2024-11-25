@@ -5,6 +5,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,
 };
+use std::str;
 
 const SOCKET_PATH: &str = "/nix/var/nix/daemon-socket/socket";
 
@@ -12,7 +13,7 @@ const SOCKET_PATH: &str = "/nix/var/nix/daemon-socket/socket";
 pub(crate) struct DaemonConnection {
     socket: Option<UnixStream>,
     #[allow(dead_code)]
-    server_features: Vec<Vec<u8>>,
+    server_features: Vec<String>,
     #[allow(dead_code)]
     daemon_version: String,
     #[allow(dead_code)]
@@ -168,14 +169,14 @@ impl TryFrom<u64> for OpCode {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ValidPathInfo {
-    pub deriver: Vec<u8>,
-    pub hash: Vec<u8>,
-    pub references: Vec<Vec<u8>>,
+    pub deriver: String,
+    pub hash: String,
+    pub references: Vec<String>,
     pub registration_time: u64, // In seconds, since the epoch
     pub nar_size: u64,
     pub ultimate: bool,
-    pub sigs: Vec<Vec<u8>>,
-    pub content_address: Vec<u8>, // Can be empty
+    pub sigs: Vec<String>,
+    pub content_address: Option<String>, // Can be empty
 }
 
 #[derive(Debug, PartialEq)]
@@ -226,10 +227,10 @@ impl TryFrom<u64> for Msg {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StderrError {
-    typ: Vec<u8>,
+    typ: String,
     level: u64,
-    name: Vec<u8>,
-    message: Vec<u8>,
+    name: String,
+    message: String,
     have_pos: u64,
     traces: Vec<Trace>,
 }
@@ -237,13 +238,13 @@ struct StderrError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Trace {
     have_pos: u64,
-    trace: Vec<u8>,
+    trace: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LoggerField {
     Int(u64),
-    String(Vec<u8>),
+    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -251,7 +252,7 @@ struct StderrStartActivity {
     act: u64,
     lvl: u64,
     typ: u64,
-    s: Vec<u8>,
+    s: String,
     fields: LoggerField,
     parent: u64,
 }
@@ -273,9 +274,9 @@ async fn read_num<T: From<u64>>(socket: &mut UnixStream) -> Result<T> {
     Ok(T::from(u64::from_le_bytes(buf)))
 }
 
-async fn write_string(socket: &mut UnixStream, s: &[u8]) -> Result<()> {
+async fn write_string(socket: &mut UnixStream, s: &str) -> Result<()> {
     write_num::<u64>(socket, s.len() as u64).await?;
-    socket.write_all(s).await?;
+    socket.write_all(s.as_bytes()).await?;
     let padding = [0; 8];
     let padding_size = (8 - s.len() % 8) % 8;
     if padding_size > 0 {
@@ -284,15 +285,17 @@ async fn write_string(socket: &mut UnixStream, s: &[u8]) -> Result<()> {
     Ok(())
 }
 
-async fn read_string(socket: &mut UnixStream) -> Result<Vec<u8>> {
-    let len = read_num::<u64>(socket).await?;
+async fn read_string(socket: &mut UnixStream) -> Result<String> {
+    let len = read_num::<u64>(socket).await.context("Failed to read string length")?;
     let aligned_len = (len + 7) & !7; // Align to the next multiple of 8
     let mut buf = vec![0; aligned_len as usize];
-    socket.read_exact(&mut buf).await?;
-    Ok(buf[..len as usize].to_vec())
+    socket.read_exact(&mut buf).await.context("Failed to read string")?;
+    Ok(str::from_utf8(&buf[..len as usize])
+        .context("Failed to parse string")?
+        .to_owned())
 }
 
-async fn read_string_list(socket: &mut UnixStream) -> Result<Vec<Vec<u8>>> {
+async fn read_string_list(socket: &mut UnixStream) -> Result<Vec<String>> {
     let len = read_num::<u64>(socket).await?;
     let mut res = Vec::with_capacity(len as usize);
     for _ in 0..len {
@@ -301,7 +304,7 @@ async fn read_string_list(socket: &mut UnixStream) -> Result<Vec<Vec<u8>>> {
     Ok(res)
 }
 
-async fn write_string_list(socket: &mut UnixStream, list: &[Vec<u8>]) -> Result<()> {
+async fn write_string_list(socket: &mut UnixStream, list: &[String]) -> Result<()> {
     write_num::<u64>(socket, list.len() as u64).await?;
     for s in list {
         write_string(socket, s).await?;
@@ -310,7 +313,7 @@ async fn write_string_list(socket: &mut UnixStream, list: &[Vec<u8>]) -> Result<
 }
 
 struct Handshake {
-    server_features: Vec<Vec<u8>>,
+    server_features: Vec<String>,
     daemon_version: String,
     is_trusted: bool,
 }
@@ -350,12 +353,9 @@ async fn handshake(socket: &mut UnixStream) -> Result<Handshake> {
         .await
         .context("Failed to write supported features")?;
 
-    let daemon_version = String::from_utf8(
-        read_string(socket)
+    let daemon_version = read_string(socket)
             .await
-            .context("Failed to read daemon version")?,
-    )
-    .context("Failed to parse daemon version")?;
+            .context("Failed to read daemon version")?;
 
     let is_trusted = read_num::<u64>(socket)
         .await
@@ -396,11 +396,11 @@ async fn forward_stderr(socket: &mut UnixStream) -> Result<()> {
                         trace: read_string(socket).await.context("Failed to read trace")?,
                     });
                 }
-                bail!("Daemon error: {}", String::from_utf8_lossy(&err.message));
+                bail!("Daemon error: {}", err.message);
             }
             Msg::Next => {
                 let next = read_string(socket).await.context("Failed to read next")?;
-                eprintln!("[nix-daemon]: {:?}", String::from_utf8_lossy(&next));
+                eprintln!("[nix-daemon]: {}", next);
             }
             Msg::StartActivity => {
                 let act = read_num(socket).await.context("Failed to read act")?;
@@ -502,7 +502,7 @@ impl DaemonConnection {
         }
     }
 
-    async fn write_string(&mut self, s: &[u8]) -> Result<()> {
+    async fn write_string(&mut self, s: &str) -> Result<()> {
         let socket = self.connect().await?;
         if let Err(e) = write_string(socket, s).await {
             self.socket = None;
@@ -511,7 +511,7 @@ impl DaemonConnection {
         Ok(())
     }
 
-    async fn read_string(&mut self) -> Result<Vec<u8>> {
+    async fn read_string(&mut self) -> Result<String> {
         let socket = self.connect().await?;
         match read_string(socket).await {
             Err(e) => {
@@ -522,7 +522,7 @@ impl DaemonConnection {
         }
     }
 
-    async fn read_string_list(&mut self) -> Result<Vec<Vec<u8>>> {
+    async fn read_string_list(&mut self) -> Result<Vec<String>> {
         let socket = self.connect().await?;
         match read_string_list(socket).await {
             Err(e) => {
@@ -554,7 +554,7 @@ impl DaemonConnection {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn is_valid_path(&mut self, path: &[u8]) -> Result<bool> {
+    pub(crate) async fn is_valid_path(&mut self, path: &str) -> Result<bool> {
         self.send_op(OpCode::IsValidPath)
             .await
             .context("Failed to send opcode")?;
@@ -575,8 +575,8 @@ impl DaemonConnection {
     #[allow(dead_code)]
     pub(crate) async fn query_path_from_hash_part(
         &mut self,
-        hash_part: &[u8],
-    ) -> Result<Option<Vec<u8>>> {
+        hash_part: &str,
+    ) -> Result<Option<String>> {
         self.send_op(OpCode::QueryPathFromHashPart)
             .await
             .context("Failed to send opcode")?;
@@ -600,7 +600,7 @@ impl DaemonConnection {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn query_path_info(&mut self, path: &[u8]) -> Result<QueryPathInfoResponse> {
+    pub(crate) async fn query_path_info(&mut self, path: &str) -> Result<QueryPathInfoResponse> {
         self.send_op(OpCode::QueryPathInfo)
             .await
             .context("Failed to send opcode")?;
@@ -619,7 +619,7 @@ impl DaemonConnection {
         if optional == 0 {
             return Ok(QueryPathInfoResponse { path: None });
         }
-        let path_info = ValidPathInfo {
+        let mut path_info = ValidPathInfo {
             deriver: self.read_string().await.context("Failed to read deriver")?,
             hash: self.read_string().await.context("Failed to read hash")?,
             references: self
@@ -640,11 +640,13 @@ impl DaemonConnection {
                 .read_string_list()
                 .await
                 .context("Failed to read sigs")?,
-            content_address: self
-                .read_string()
-                .await
-                .context("Failed to read content address")?,
+            content_address: Some(self.read_string()
+                    .await
+                    .context("Failed to read content address")?)
         };
+        if path_info.content_address.as_ref().unwrap().is_empty() {
+            path_info.content_address = None;
+        }
 
         //self.write_string(path).await?;
         Ok(QueryPathInfoResponse {

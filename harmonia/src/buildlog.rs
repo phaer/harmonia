@@ -14,8 +14,8 @@ use tokio_util::io::ReaderStream;
 use crate::config::Config;
 use crate::{cache_control_max_age_1y, cache_control_no_store, nixhash, some_or_404};
 
-fn query_drv_path(drv: &str) -> Option<String> {
-    nixhash(if drv.len() > 32 { &drv[0..32] } else { drv })
+async fn query_drv_path(settings: &web::Data<Config>, drv: &str) -> Option<String> {
+    nixhash(settings, if drv.len() > 32 { &drv[0..32] } else { drv }).await
 }
 
 pub fn get_build_log(store: &Path, drv_path: &Path) -> Option<PathBuf> {
@@ -48,8 +48,15 @@ pub(crate) async fn get(
     req: HttpRequest,
     settings: web::Data<Config>,
 ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
-    let drv_path = some_or_404!(query_drv_path(&drv));
-    match settings.store.daemon.lock().await.is_valid_path(drv_path.as_bytes()).await {
+    let drv_path = some_or_404!(query_drv_path(&settings, &drv).await);
+    match settings
+        .store
+        .daemon
+        .lock()
+        .await
+        .is_valid_path(&drv_path)
+        .await
+    {
         Ok(true) => (),
         Ok(false) => {
             return Ok(HttpResponse::NotFound()
