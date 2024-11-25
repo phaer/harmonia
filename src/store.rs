@@ -16,7 +16,7 @@ impl Store {
         let real_store = "/nix/store".to_string();
         let virtual_store = real_store.clone();
 
-        assert!(str::from_utf8(virtual_store.as_str().as_bytes()).is_ok());
+        assert!(str::from_utf8(virtual_store.as_bytes()).is_ok());
 
         if virtual_store == real_store {
             return Self {
@@ -41,7 +41,7 @@ impl Store {
     }
 
     pub fn real_store(&self) -> &Path {
-        &Path::new(self.real_store.as_ref().unwrap_or(&self.virtual_store))
+        Path::new(self.real_store.as_ref().unwrap_or(&self.virtual_store))
     }
 
     pub fn virtual_store(&self) -> &str {

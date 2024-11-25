@@ -141,7 +141,7 @@ pub(crate) async fn get(
     let hash = hash.into_inner();
     let store_path = some_or_404!(nixhash(&settings, &hash).await);
     let narinfo = match query_narinfo(
-        &settings.store.virtual_store(),
+        settings.store.virtual_store(),
         &store_path,
         &hash,
         &settings.secret_keys,
