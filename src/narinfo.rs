@@ -67,7 +67,7 @@ async fn query_narinfo(
         deriver: if path_info.deriver.is_empty() {
             None
         } else {
-            Some(path_info.deriver.clone())
+            extract_filename(&path_info.deriver)
         },
         sigs: vec![],
         ca: path_info.content_address,
